@@ -1,0 +1,23 @@
+{
+  "name": "@bominal-senior/auth",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bominal-senior/db": "workspace:*",
+    "@bominal-senior/types": "workspace:*",
+    "next-auth": "^5.0.0-beta.25"
+  },
+  "devDependencies": {
+    "@bominal-senior/tsconfig": "workspace:*",
+    "@types/pg": "^8.18.0",
+    "@types/react": "^19.0.0",
+    "next": "^15.1.0",
+    "typescript": "^5.7.0"
+  }
+}

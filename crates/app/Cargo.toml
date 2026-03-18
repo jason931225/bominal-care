@@ -1,0 +1,17 @@
+[package]
+name = "bominal-app"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bominal-types = { path = "../types" }
+bominal-db = { path = "../db" }
+leptos = { workspace = true }
+leptos_router = { workspace = true }
+leptos_meta = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+sqlx = { workspace = true }
+validator = { workspace = true }

@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@source "../crates/app/src/**/*.rs";
+
+/* Senior accessibility: larger base text */
+.text-scale-senior {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+}

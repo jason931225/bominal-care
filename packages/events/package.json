@@ -1,0 +1,21 @@
+{
+  "name": "@bominal-senior/events",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bominal-senior/types": "workspace:*",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@bominal-senior/tsconfig": "workspace:*",
+    "@types/node": "^22.19.15",
+    "@types/pg": "^8.18.0",
+    "typescript": "^5.7.0"
+  }
+}

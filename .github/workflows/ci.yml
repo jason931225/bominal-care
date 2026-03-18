@@ -1,0 +1,103 @@
+# =============================================================================
+# GitHub Actions CI — Rust build, test, lint, deploy
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: true
+
+jobs:
+  check:
+    name: Check, Lint, Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Verify sqlx offline cache
+        run: cargo sqlx prepare --check --workspace
+        continue-on-error: true
+
+      - name: Run tests
+        run: cargo test
+
+  deploy:
+    name: Deploy to Cloud Run
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      IMAGE_TAG: ${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker asia-northeast3-docker.pkg.dev
+
+      - name: Build and push Docker image
+        run: |
+          docker build -f docker/Dockerfile.rust \
+            -t "asia-northeast3-docker.pkg.dev/${GCP_PROJECT_ID}/bominal/bominal-server:${IMAGE_TAG}" \
+            -t "asia-northeast3-docker.pkg.dev/${GCP_PROJECT_ID}/bominal/bominal-server:latest" \
+            .
+          docker push --all-tags "asia-northeast3-docker.pkg.dev/${GCP_PROJECT_ID}/bominal/bominal-server"
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: bominal-server
+          region: asia-northeast3
+          image: asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bominal/bominal-server:${{ github.sha }}
+          env_vars: |
+            LEPTOS_SITE_ROOT=/site
+            RUST_LOG=info
+          flags: |
+            --port=8080
+            --min-instances=1
+            --max-instances=10
+            --memory=512Mi
+            --cpu=1
+            --allow-unauthenticated

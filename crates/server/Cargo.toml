@@ -1,0 +1,31 @@
+[package]
+name = "bominal-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bominal-types = { path = "../types" }
+bominal-db = { path = "../db" }
+axum = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tower-sessions = { workspace = true }
+tower-sessions-sqlx-store = { workspace = true }
+leptos = { workspace = true }
+leptos_axum = { workspace = true }
+sqlx = { workspace = true }
+webauthn-rs = { workspace = true }
+webauthn-rs-proto = { workspace = true }
+oauth2 = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+dotenvy = { workspace = true }
+once_cell = { workspace = true }

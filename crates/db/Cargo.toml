@@ -1,0 +1,17 @@
+[package]
+name = "bominal-db"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bominal-types = { path = "../types" }
+sqlx = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rust_decimal = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }

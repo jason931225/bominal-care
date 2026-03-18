@@ -1,0 +1,7 @@
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[build]
+# Speed up compilation in dev
+rustflags = ["--cfg", "tokio_unstable"]

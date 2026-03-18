@@ -1,0 +1,69 @@
+# =============================================================================
+# Multi-stage Docker build for bominal-senior (Rust/Leptos)
+# Produces a single statically-linked binary + WASM + static assets
+# =============================================================================
+
+# --- Stage 1: Build ---
+FROM rust:1.85-bookworm AS builder
+
+# Install wasm target and cargo-leptos
+RUN rustup target add wasm32-unknown-unknown
+RUN cargo install cargo-leptos --locked
+
+# Install wasm-opt for WASM optimization
+RUN apt-get update && apt-get install -y binaryen && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Cache dependencies: copy manifests first
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates/types/Cargo.toml crates/types/Cargo.toml
+COPY crates/db/Cargo.toml crates/db/Cargo.toml
+COPY crates/server/Cargo.toml crates/server/Cargo.toml
+COPY crates/app/Cargo.toml crates/app/Cargo.toml
+
+# Create dummy src files to cache dependency compilation
+RUN mkdir -p crates/types/src crates/db/src crates/server/src crates/app/src && \
+    echo "pub fn dummy() {}" > crates/types/src/lib.rs && \
+    echo "pub fn dummy() {}" > crates/db/src/lib.rs && \
+    echo "pub fn dummy() {}" > crates/server/src/lib.rs && \
+    echo "pub fn dummy() {}" > crates/app/src/lib.rs && \
+    cargo build --release 2>/dev/null || true
+
+# Copy actual source
+COPY crates/ crates/
+COPY style/ style/
+COPY .sqlx/ .sqlx/
+
+# Build with cargo-leptos
+ENV SQLX_OFFLINE=true
+RUN cargo leptos build --release
+
+# Optimize WASM bundle
+RUN wasm-opt -Oz -o /app/target/site/pkg/bominal_app_bg_opt.wasm \
+    /app/target/site/pkg/bominal_app_bg.wasm 2>/dev/null || true && \
+    if [ -f /app/target/site/pkg/bominal_app_bg_opt.wasm ]; then \
+      mv /app/target/site/pkg/bominal_app_bg_opt.wasm /app/target/site/pkg/bominal_app_bg.wasm; \
+    fi
+
+# --- Stage 2: Runtime ---
+FROM debian:bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libssl3 ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN useradd -r -s /bin/false appuser
+
+COPY --from=builder /app/target/release/bominal-server /usr/local/bin/bominal-server
+COPY --from=builder /app/target/site /site
+
+ENV LEPTOS_SITE_ROOT=/site
+ENV LEPTOS_SITE_ADDR=0.0.0.0:8080
+ENV RUST_LOG=info
+
+EXPOSE 8080
+
+USER appuser
+
+CMD ["bominal-server"]

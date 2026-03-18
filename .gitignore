@@ -1,0 +1,63 @@
+# Rust
+/target/
+*.rs.bk
+
+# sqlx offline cache (tracked for CI)
+# .sqlx/
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Prisma
+packages/db/prisma/*.db
+packages/db/prisma/migrations/
+
+# Docker
+docker/data/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Turbo
+.turbo/
+
+# Vercel
+.vercel/
+
+# PWA
+sw.js
+workbox-*.js
+.vercel

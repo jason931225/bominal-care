@@ -1,0 +1,18 @@
+{
+  "name": "@bominal-senior/integrations",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bominal-senior/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@bominal-senior/tsconfig": "workspace:*",
+    "typescript": "^5.7.0"
+  }
+}
