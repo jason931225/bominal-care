@@ -1,5 +1,5 @@
 # =============================================================================
-# Google Cloud Build — Build Docker image → Push to Artifact Registry → Deploy to Cloud Run
+# Google Cloud Build — Build → Push to Artifact Registry → Deploy Cloud Run + Firebase Hosting
 # Region: asia-northeast3 (Seoul)
 # =============================================================================
 
@@ -23,7 +23,7 @@ steps:
       - '--all-tags'
       - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/bominal-server'
 
-  # Deploy to Cloud Run
+  # Deploy Cloud Run backend (serves SSR + API)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -49,6 +49,18 @@ steps:
       - '--allow-unauthenticated'
       - '--set-env-vars'
       - 'LEPTOS_SITE_ROOT=/site,RUST_LOG=info'
+
+  # Deploy Firebase Hosting (CDN for static assets, rewrites to Cloud Run for SSR)
+  - name: 'gcr.io/cloud-builders/npm'
+    args: ['install', '-g', 'firebase-tools']
+  - name: 'gcr.io/cloud-builders/npm'
+    entrypoint: firebase
+    args:
+      - 'deploy'
+      - '--only'
+      - 'hosting'
+      - '--project'
+      - '${PROJECT_ID}'
 
 substitutions:
   _REGION: asia-northeast3

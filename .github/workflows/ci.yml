@@ -1,5 +1,5 @@
 # =============================================================================
-# GitHub Actions CI — Rust build, test, lint, deploy
+# GitHub Actions CI — Rust build, test, lint, deploy to Firebase Hosting
 # =============================================================================
 
 name: CI
@@ -51,7 +51,7 @@ jobs:
         run: cargo test
 
   deploy:
-    name: Deploy to Cloud Run
+    name: Deploy to Firebase Hosting + Cloud Run
     needs: check
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -85,7 +85,7 @@ jobs:
             .
           docker push --all-tags "asia-northeast3-docker.pkg.dev/${GCP_PROJECT_ID}/bominal/bominal-server"
 
-      - name: Deploy to Cloud Run
+      - name: Deploy Cloud Run backend
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: bominal-server
@@ -101,3 +101,11 @@ jobs:
             --memory=512Mi
             --cpu=1
             --allow-unauthenticated
+
+      - name: Deploy Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: ${{ secrets.GCP_PROJECT_ID }}
