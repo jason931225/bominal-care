@@ -320,6 +320,8 @@ pub async fn login_finish(
         role,
         kyc_level,
         tenant_id: None,
+        person_id: None,
+        provider_id: None,
     };
 
     if let Err(e) = session.insert(SESSION_USER_KEY, &auth_user).await {

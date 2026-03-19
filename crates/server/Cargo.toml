@@ -3,6 +3,10 @@ name = "bominal-server"
 version.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "bominal-server"
+path = "src/main.rs"
+
 [dependencies]
 bominal-types = { path = "../types" }
 bominal-db = { path = "../db" }
@@ -11,9 +15,9 @@ tokio = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 tower-sessions = { workspace = true }
-tower-sessions-sqlx-store = { workspace = true }
-leptos = { workspace = true }
-leptos_axum = { workspace = true }
+# tower-sessions-sqlx-store has a tower-sessions-core version mismatch (0.14 vs 0.15).
+# Using custom PgSessionStore in src/session_store.rs instead.
+time = "0.3"
 sqlx = { workspace = true }
 webauthn-rs = { workspace = true }
 webauthn-rs-proto = { workspace = true }
@@ -29,3 +33,8 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 dotenvy = { workspace = true }
 once_cell = { workspace = true }
+async-trait = { workspace = true }
+governor = "0.8"
+sha2 = "0.10"
+hex = "0.4"
+validator = { workspace = true }

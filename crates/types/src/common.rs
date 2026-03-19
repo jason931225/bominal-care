@@ -39,9 +39,33 @@ impl PaginationMeta {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PaginationParams {
+    #[serde(deserialize_with = "deserialize_i64_from_str")]
     pub page: i64,
+    #[serde(deserialize_with = "deserialize_i64_from_str")]
     pub limit: i64,
+}
+
+/// Accept both `123` (number) and `"123"` (string) for query-param i64 fields.
+fn deserialize_i64_from_str<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+    struct I64OrStr;
+    impl<'de> de::Visitor<'de> for I64OrStr {
+        type Value = i64;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("i64 or string-encoded i64")
+        }
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<i64, E> { Ok(v) }
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<i64, E> { Ok(v as i64) }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<i64, E> {
+            v.parse().map_err(de::Error::custom)
+        }
+    }
+    deserializer.deserialize_any(I64OrStr)
 }
 
 impl PaginationParams {

@@ -6,7 +6,6 @@
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
 use uuid::Uuid;
 
 use crate::enums::*;
@@ -14,7 +13,8 @@ use crate::enums::*;
 // ---------------------------------------------------------------------------
 // 1. User
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct User {
     pub id: Uuid,
     pub email: Option<String>,
@@ -33,11 +33,12 @@ pub struct User {
 // ---------------------------------------------------------------------------
 // 2. Account
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct Account {
     pub id: Uuid,
     pub user_id: Uuid,
-    #[sqlx(rename = "type")]
+    #[cfg_attr(feature = "ssr", sqlx(rename = "type"))]
     #[serde(rename = "type")]
     pub account_type: String,
     pub provider: String,
@@ -54,7 +55,8 @@ pub struct Account {
 // ---------------------------------------------------------------------------
 // 3. Session
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct Session {
     pub id: Uuid,
     pub session_token: String,
@@ -65,7 +67,8 @@ pub struct Session {
 // ---------------------------------------------------------------------------
 // 4. VerificationToken
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct VerificationToken {
     pub identifier: String,
     pub token: String,
@@ -75,7 +78,8 @@ pub struct VerificationToken {
 // ---------------------------------------------------------------------------
 // 5. PersonProfile
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct PersonProfile {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -99,11 +103,13 @@ pub struct PersonProfile {
 // ---------------------------------------------------------------------------
 // 6. SeniorProfile
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct SeniorProfile {
     pub id: Uuid,
     pub person_id: Uuid,
-    pub care_level: Option<i32>,
+    pub care_level: Option<CareLevelEnum>,
+    pub copayment_tier: CopaymentTier,
     pub has_ltci_certification: bool,
     pub ltci_number: Option<String>,
     pub primary_diagnosis: Option<String>,
@@ -118,7 +124,8 @@ pub struct SeniorProfile {
 // ---------------------------------------------------------------------------
 // 7. FamilyRelationship
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct FamilyRelationship {
     pub id: Uuid,
     pub senior_person_id: Uuid,
@@ -133,7 +140,8 @@ pub struct FamilyRelationship {
 // ---------------------------------------------------------------------------
 // 8. ConsentRecord
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct ConsentRecord {
     pub id: Uuid,
     pub subject_person_id: Uuid,
@@ -143,6 +151,7 @@ pub struct ConsentRecord {
     pub granted_at: DateTime<Utc>,
     pub revoked_at: Option<DateTime<Utc>>,
     pub expires_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -150,11 +159,12 @@ pub struct ConsentRecord {
 // ---------------------------------------------------------------------------
 // 9. ProviderOrganization
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct ProviderOrganization {
     pub id: Uuid,
     pub name: String,
-    #[sqlx(rename = "type")]
+    #[cfg_attr(feature = "ssr", sqlx(rename = "type"))]
     #[serde(rename = "type")]
     pub provider_type: ProviderType,
     pub registration_number: String,
@@ -171,6 +181,8 @@ pub struct ProviderOrganization {
     pub description: Option<String>,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
+    pub nhis_institution_code: Option<String>,
+    pub medical_institution_code: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub created_by: Option<Uuid>,
@@ -180,7 +192,8 @@ pub struct ProviderOrganization {
 // ---------------------------------------------------------------------------
 // 10. CaregiverApplication
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct CaregiverApplication {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -206,11 +219,12 @@ pub struct CaregiverApplication {
 // ---------------------------------------------------------------------------
 // 11. CaregiverCredential
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct CaregiverCredential {
     pub id: Uuid,
     pub application_id: Uuid,
-    #[sqlx(rename = "type")]
+    #[cfg_attr(feature = "ssr", sqlx(rename = "type"))]
     #[serde(rename = "type")]
     pub credential_type: CredentialType,
     pub status: CredentialStatus,
@@ -227,7 +241,8 @@ pub struct CaregiverCredential {
 // ---------------------------------------------------------------------------
 // 12. ServiceRegion
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct ServiceRegion {
     pub id: Uuid,
     pub provider_id: Uuid,
@@ -241,7 +256,8 @@ pub struct ServiceRegion {
 // ---------------------------------------------------------------------------
 // 13. AvailabilitySlot
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct AvailabilitySlot {
     pub id: Uuid,
     pub application_id: Uuid,
@@ -256,7 +272,8 @@ pub struct AvailabilitySlot {
 // ---------------------------------------------------------------------------
 // 14. ServiceType
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct ServiceType {
     pub id: Uuid,
     pub application_id: Option<Uuid>,
@@ -271,7 +288,8 @@ pub struct ServiceType {
 // ---------------------------------------------------------------------------
 // 15. MatchRequest
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct MatchRequest {
     pub id: Uuid,
     pub senior_id: Uuid,
@@ -295,7 +313,8 @@ pub struct MatchRequest {
 // ---------------------------------------------------------------------------
 // 16. MatchRecommendation
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct MatchRecommendation {
     pub id: Uuid,
     pub match_request_id: Uuid,
@@ -311,7 +330,8 @@ pub struct MatchRecommendation {
 // ---------------------------------------------------------------------------
 // 17. CarePlan
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct CarePlan {
     pub id: Uuid,
     pub senior_id: Uuid,
@@ -322,6 +342,7 @@ pub struct CarePlan {
     pub start_date: Option<DateTime<Utc>>,
     pub end_date: Option<DateTime<Utc>>,
     pub goals: Option<serde_json::Value>,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub created_by: Option<Uuid>,
@@ -331,7 +352,8 @@ pub struct CarePlan {
 // ---------------------------------------------------------------------------
 // 18. Visit
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct Visit {
     pub id: Uuid,
     pub care_plan_id: Uuid,
@@ -345,8 +367,10 @@ pub struct Visit {
     pub check_in_longitude: Option<f64>,
     pub check_out_latitude: Option<f64>,
     pub check_out_longitude: Option<f64>,
+    pub check_in_distance_meters: Option<f64>,
     pub tasks: Option<serde_json::Value>,
     pub notes: Option<String>,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -354,7 +378,8 @@ pub struct Visit {
 // ---------------------------------------------------------------------------
 // 19. DailyObservation
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct DailyObservation {
     pub id: Uuid,
     pub care_plan_id: Uuid,
@@ -370,7 +395,8 @@ pub struct DailyObservation {
 // ---------------------------------------------------------------------------
 // 20. Incident
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct Incident {
     pub id: Uuid,
     pub visit_id: Option<Uuid>,
@@ -381,6 +407,7 @@ pub struct Incident {
     pub occurred_at: DateTime<Utc>,
     pub resolved_at: Option<DateTime<Utc>>,
     pub resolution: Option<String>,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -388,7 +415,8 @@ pub struct Incident {
 // ---------------------------------------------------------------------------
 // 21. MedicalHistoryEntry
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct MedicalHistoryEntry {
     pub id: Uuid,
     pub person_id: Uuid,
@@ -406,7 +434,8 @@ pub struct MedicalHistoryEntry {
 // ---------------------------------------------------------------------------
 // 22. Medication
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct Medication {
     pub id: Uuid,
     pub person_id: Uuid,
@@ -421,6 +450,11 @@ pub struct Medication {
     pub is_active: bool,
     pub side_effects: Option<String>,
     pub notes: Option<String>,
+    pub approval_status: String,
+    pub submitted_by: Option<Uuid>,
+    pub approved_by: Option<Uuid>,
+    pub approved_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub created_by: Option<Uuid>,
@@ -430,7 +464,8 @@ pub struct Medication {
 // ---------------------------------------------------------------------------
 // 23. MedicationSchedule
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct MedicationSchedule {
     pub id: Uuid,
     pub medication_id: Uuid,
@@ -444,7 +479,8 @@ pub struct MedicationSchedule {
 // ---------------------------------------------------------------------------
 // 24. MedicationEvent
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct MedicationEvent {
     pub id: Uuid,
     pub medication_id: Uuid,
@@ -460,7 +496,8 @@ pub struct MedicationEvent {
 // ---------------------------------------------------------------------------
 // 25. Appointment
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct Appointment {
     pub id: Uuid,
     pub person_id: Uuid,
@@ -471,6 +508,11 @@ pub struct Appointment {
     pub purpose: Option<String>,
     pub notes: Option<String>,
     pub address: Option<String>,
+    pub approval_status: String,
+    pub submitted_by: Option<Uuid>,
+    pub approved_by: Option<Uuid>,
+    pub approved_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub created_by: Option<Uuid>,
@@ -480,7 +522,8 @@ pub struct Appointment {
 // ---------------------------------------------------------------------------
 // 26. InstitutionReferral
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct InstitutionReferral {
     pub id: Uuid,
     pub from_provider_id: Uuid,
@@ -499,7 +542,8 @@ pub struct InstitutionReferral {
 // ---------------------------------------------------------------------------
 // 27. EligibilityCase
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct EligibilityCase {
     pub id: Uuid,
     pub senior_id: Uuid,
@@ -518,7 +562,8 @@ pub struct EligibilityCase {
 // ---------------------------------------------------------------------------
 // 28. ApprovalStep
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct ApprovalStep {
     pub id: Uuid,
     pub case_id: Uuid,
@@ -535,7 +580,8 @@ pub struct ApprovalStep {
 // ---------------------------------------------------------------------------
 // 29. ClaimOrSubsidyRecord
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct ClaimOrSubsidyRecord {
     pub id: Uuid,
     pub case_id: Uuid,
@@ -554,7 +600,8 @@ pub struct ClaimOrSubsidyRecord {
 // ---------------------------------------------------------------------------
 // 30. ObservabilitySignal
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct ObservabilitySignal {
     pub id: Uuid,
     pub event_type: ObservabilityEventType,
@@ -573,11 +620,12 @@ pub struct ObservabilitySignal {
 // ---------------------------------------------------------------------------
 // 31. Notification
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct Notification {
     pub id: Uuid,
     pub user_id: Uuid,
-    #[sqlx(rename = "type")]
+    #[cfg_attr(feature = "ssr", sqlx(rename = "type"))]
     #[serde(rename = "type")]
     pub notification_type: NotificationType,
     pub title: String,
@@ -591,7 +639,8 @@ pub struct Notification {
 // ---------------------------------------------------------------------------
 // 32. AuditLog
 // ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct AuditLog {
     pub id: Uuid,
     pub user_id: Option<Uuid>,

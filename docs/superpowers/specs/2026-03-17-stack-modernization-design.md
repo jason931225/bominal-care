@@ -2,7 +2,7 @@
 
 ## Overview
 
-Full rewrite of the bominal-senior platform from TypeScript/Next.js to Rust. Single Leptos SSR application with Axum, WASM client hydration, passkey-first auth, PostgreSQL 18 with RLS, and Tailwind CSS 4.
+Full rewrite of the bominal-care platform from TypeScript/Next.js to Rust. Single Leptos SSR application with Axum, WASM client hydration, passkey-first auth, PostgreSQL 18 with RLS, and Tailwind CSS 4.
 
 ## Current State
 
@@ -33,7 +33,7 @@ Full rewrite of the bominal-senior platform from TypeScript/Next.js to Rust. Sin
 ## 1. Project Structure
 
 ```
-bominal-senior/
+bominal-care/
 ├── Cargo.toml                  ← workspace root
 ├── crates/
 │   ├── app/                    ← Leptos SSR app (frontend + server)
@@ -398,15 +398,15 @@ services:
   postgres:
     image: postgres:18
     environment:
-      POSTGRES_USER: bominalsenior
-      POSTGRES_PASSWORD: bominalsenior
-      POSTGRES_DB: bominalsenior
+      POSTGRES_USER: bominalcare
+      POSTGRES_PASSWORD: bominalcare
+      POSTGRES_DB: bominalcare
     ports:
       - "5433:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bominalsenior"]
+      test: ["CMD-SHELL", "pg_isready -U bominalcare"]
 
   redis:
     image: redis:7-alpine
@@ -421,7 +421,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://bominalsenior:bominalsenior@postgres:5432/bominalsenior
+      DATABASE_URL: postgresql://bominalcare:bominalcare@postgres:5432/bominalcare
       REDIS_URL: redis://redis:6379
 ```
 

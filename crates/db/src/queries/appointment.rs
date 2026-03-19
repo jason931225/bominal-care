@@ -151,6 +151,13 @@ pub async fn update_status(
     .await
 }
 
+pub async fn cancel_appointment(
+    pool: &PgPool,
+    id: Uuid,
+) -> Result<Appointment, sqlx::Error> {
+    update_status(pool, id, AppointmentStatus::Cancelled).await
+}
+
 pub async fn get_appointment(
     pool: &PgPool,
     id: Uuid,

@@ -3,10 +3,14 @@ name = "bominal-types"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+ssr = ["dep:sqlx"]
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
-sqlx = { workspace = true }
+sqlx = { workspace = true, optional = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 rust_decimal = { workspace = true }

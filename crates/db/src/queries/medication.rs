@@ -127,6 +127,39 @@ pub async fn create_medication(
 }
 
 // ---------------------------------------------------------------------------
+// get_medication
+// ---------------------------------------------------------------------------
+
+pub async fn get_medication(
+    pool: &PgPool,
+    id: Uuid,
+) -> Result<Option<MedicationWithSchedules>, sqlx::Error> {
+    let medication = sqlx::query_as::<_, Medication>(
+        "SELECT * FROM medications WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+
+    let medication = match medication {
+        Some(m) => m,
+        None => return Ok(None),
+    };
+
+    let schedules = sqlx::query_as::<_, MedicationSchedule>(
+        "SELECT * FROM medication_schedules WHERE medication_id = $1 AND is_active = true ORDER BY time_of_day ASC",
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(Some(MedicationWithSchedules {
+        medication,
+        schedules,
+    }))
+}
+
+// ---------------------------------------------------------------------------
 // update_medication
 // ---------------------------------------------------------------------------
 

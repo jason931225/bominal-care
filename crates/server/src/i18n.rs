@@ -22,7 +22,7 @@ pub static KO_MESSAGES: Lazy<Messages> = Lazy::new(|| {
 
     // common
     let mut common = HashMap::new();
-    common.insert("app_name", "시니어케어");
+    common.insert("app_name", "Bominal Care");
     common.insert("loading", "로딩 중...");
     common.insert("error", "오류가 발생했습니다");
     common.insert("save", "저장");
@@ -75,7 +75,7 @@ pub static EN_MESSAGES: Lazy<Messages> = Lazy::new(|| {
 
     // common
     let mut common = HashMap::new();
-    common.insert("app_name", "SeniorCare");
+    common.insert("app_name", "Bominal Care");
     common.insert("loading", "Loading...");
     common.insert("error", "An error occurred");
     common.insert("save", "Save");

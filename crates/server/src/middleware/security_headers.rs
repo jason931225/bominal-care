@@ -36,6 +36,21 @@ pub async fn security_headers(request: axum::extract::Request, next: Next) -> Re
         "Permissions-Policy",
         HeaderValue::from_static("camera=(), microphone=(), geolocation=(self)"),
     );
+    // CSP: allow WASM execution + inline styles for Leptos, block framing
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(
+            "default-src 'self'; \
+             script-src 'self' 'wasm-unsafe-eval'; \
+             style-src 'self' 'unsafe-inline'; \
+             img-src 'self' data:; \
+             font-src 'self'; \
+             connect-src 'self'; \
+             frame-ancestors 'none'; \
+             base-uri 'self'; \
+             form-action 'self'"
+        ),
+    );
 
     response
 }

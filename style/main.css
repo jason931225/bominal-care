@@ -1,8 +1,132 @@
-@import "tailwindcss";
-@source "../crates/app/src/**/*.rs";
+/* ─────────────────────────────────────────────
+   Bominal Care — Design Token System
+   Tokens defined via Tailwind CDN config (index.html)
+   This file provides custom CSS utilities only.
+   ───────────────────────────────────────────── */
 
-/* Senior accessibility: larger base text */
+/* ─────────────────────────────────────────────
+   Portal Accent CSS Custom Properties
+   Applied via data-portal attribute on layout root
+   ───────────────────────────────────────────── */
+
+:root {
+  --portal-accent: #3182F6;
+  --portal-accent-light: #E8F3FF;
+  --portal-accent-hover: #1B64DA;
+}
+
+[data-portal="senior"] {
+  --portal-accent: #3182F6;
+  --portal-accent-light: #E8F3FF;
+  --portal-accent-hover: #1B64DA;
+}
+[data-portal="family"] {
+  --portal-accent: #6366F1;
+  --portal-accent-light: #EEF2FF;
+  --portal-accent-hover: #4F46E5;
+}
+[data-portal="caregiver"] {
+  --portal-accent: #14B8A6;
+  --portal-accent-light: #E6FAF7;
+  --portal-accent-hover: #0D9488;
+}
+[data-portal="internal"] {
+  --portal-accent: #64748B;
+  --portal-accent-light: #F1F5F9;
+  --portal-accent-hover: #475569;
+}
+[data-portal="government"] {
+  --portal-accent: #8B5CF6;
+  --portal-accent-light: #F3EEFF;
+  --portal-accent-hover: #7C3AED;
+}
+[data-portal="medical"] {
+  --portal-accent: #0EA5E9;
+  --portal-accent-light: #E0F2FE;
+  --portal-accent-hover: #0284C7;
+}
+
+/* ─────────────────────────────────────────────
+   Card Utilities
+   ───────────────────────────────────────────── */
+
+.card {
+  background: #FFFFFF;
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+}
+
+.card-interactive {
+  background: #FFFFFF;
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+  transition: box-shadow 200ms ease, transform 200ms ease;
+  cursor: pointer;
+}
+
+.card-interactive:hover {
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
+}
+
+.card-interactive:active {
+  transform: scale(0.98);
+}
+
+/* ─────────────────────────────────────────────
+   Typography Scales
+   ───────────────────────────────────────────── */
+
 .text-scale-senior {
   font-size: 1.125rem;
   line-height: 1.75rem;
+}
+
+.text-scale-default {
+  font-size: 0.9375rem;
+  line-height: 1.5rem;
+}
+
+/* ─────────────────────────────────────────────
+   Skeleton Shimmer
+   ───────────────────────────────────────────── */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #F8F9FA 25%,
+    #e9ecef 37%,
+    #F8F9FA 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+  border-radius: 0.5rem;
+}
+
+/* ─────────────────────────────────────────────
+   Navigation
+   ───────────────────────────────────────────── */
+
+.nav-active {
+  background: var(--portal-accent-light);
+  color: var(--portal-accent);
+}
+
+/* ─────────────────────────────────────────────
+   Toast System
+   ───────────────────────────────────────────── */
+
+.toast-container {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.toast-container > * {
+  pointer-events: auto;
 }

@@ -57,6 +57,8 @@ pub async fn demo_login(
         role,
         kyc_level,
         tenant_id: None,
+        person_id: None,
+        provider_id: None,
     };
 
     if let Err(e) = session.insert(SESSION_USER_KEY, &auth_user).await {

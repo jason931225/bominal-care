@@ -4,11 +4,13 @@ use leptos::prelude::*;
 // Step data for the 7-step application process
 // ---------------------------------------------------------------------------
 
+/// Metadata for a single step in the multi-step application form.
 struct StepInfo {
     number: u8,
     label: &'static str,
 }
 
+/// The seven steps of the long-term care application process.
 const STEPS: &[StepInfo] = &[
     StepInfo { number: 1, label: "기본 정보" },
     StepInfo { number: 2, label: "건강 상태" },
@@ -23,11 +25,15 @@ const STEPS: &[StepInfo] = &[
 // Progress bar
 // ---------------------------------------------------------------------------
 
+/// Horizontal progress bar showing completion percentage across all steps.
+///
+/// Uses `--portal-accent` for the fill color and `bg-surface-subtle` for the
+/// track, with a smooth width transition.
 #[component]
 fn ProgressBar(
-    /// Current step (1-based)
+    /// Current step (1-based).
     current_step: u8,
-    /// Total number of steps
+    /// Total number of steps.
     total_steps: u8,
 ) -> impl IntoView {
     let pct = if total_steps > 0 {
@@ -38,9 +44,9 @@ fn ProgressBar(
     let width_style = format!("width: {}%", pct);
 
     view! {
-        <div class="w-full bg-gray-200 rounded-full h-2">
+        <div class="w-full bg-surface-subtle rounded-full h-2">
             <div
-                class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                class="bg-[var(--portal-accent)] h-2 rounded-full transition-all duration-300"
                 style=width_style
             />
         </div>
@@ -51,9 +57,15 @@ fn ProgressBar(
 // Step indicators
 // ---------------------------------------------------------------------------
 
+/// Row of numbered circles representing each application step.
+///
+/// Visual states:
+/// - **Completed**: accent background with white checkmark.
+/// - **Current**: accent-light background with accent ring and text.
+/// - **Upcoming**: subtle background with disabled text.
 #[component]
 fn StepIndicators(
-    /// Current step (1-based)
+    /// Current step (1-based).
     current_step: u8,
 ) -> impl IntoView {
     view! {
@@ -63,26 +75,32 @@ fn StepIndicators(
                 let is_current = step.number == current_step;
 
                 let circle_class = if is_done {
-                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold bg-blue-600 text-white"
+                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold \
+                     bg-[var(--portal-accent)] text-white"
                 } else if is_current {
-                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold bg-blue-100 text-blue-700 ring-2 ring-blue-600"
+                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold \
+                     bg-[var(--portal-accent-light)] text-[var(--portal-accent)] \
+                     ring-2 ring-[var(--portal-accent)]"
                 } else {
-                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold bg-gray-100 text-gray-400"
+                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold \
+                     bg-surface-subtle text-txt-disabled"
                 };
 
                 let label_class = if is_current {
-                    "text-xs text-blue-700 font-medium mt-1 text-center whitespace-nowrap"
+                    "text-xs font-medium mt-1 text-center whitespace-nowrap \
+                     text-[var(--portal-accent)]"
                 } else if is_done {
-                    "text-xs text-blue-600 mt-1 text-center whitespace-nowrap"
+                    "text-xs mt-1 text-center whitespace-nowrap \
+                     text-[var(--portal-accent)]"
                 } else {
-                    "text-xs text-gray-400 mt-1 text-center whitespace-nowrap"
+                    "text-xs mt-1 text-center whitespace-nowrap \
+                     text-txt-disabled"
                 };
 
                 view! {
                     <div class="flex flex-col items-center min-w-[3.5rem]">
                         <div class=circle_class>
                             {if is_done {
-                                // Checkmark for completed steps
                                 view! {
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
@@ -104,22 +122,28 @@ fn StepIndicators(
 // Applicant layout — multi-step form
 // ---------------------------------------------------------------------------
 
-/// Applicant portal layout for the multi-step application form (7 steps).
-/// Displays a progress bar, step indicators, back button, and step counter.
+/// Applicant portal layout for the multi-step long-term care application form.
+///
+/// Structure:
+/// - **Top bar** (sticky): back button, title, step counter, progress bar.
+///   Uses `shadow-sm` instead of a hard border.
+/// - **Step indicators**: visual step circles beneath the header.
+/// - **Main content**: animated with `animate-fade-in`.
+/// - **Bottom action bar** (fixed): Previous / Next navigation buttons with
+///   an upward shadow instead of a hard border.
 #[component]
 pub fn ApplicantLayout(children: Children) -> impl IntoView {
-    // Default to step 1; in production this would come from route/state
     let current_step: u8 = 1;
     let total_steps: u8 = STEPS.len() as u8;
 
     view! {
-        <div class="min-h-screen bg-gray-50">
+        <div class="min-h-screen bg-surface-page">
             // Top bar with back button and step counter
-            <header class="sticky top-0 z-40 bg-white border-b border-gray-200">
+            <header class="sticky top-0 z-40 bg-surface-card shadow-sm">
                 <div class="max-w-2xl mx-auto flex items-center justify-between px-4 h-14">
                     // Back button
                     <button
-                        class="flex items-center gap-1 text-gray-600 hover:text-gray-900 transition-colors"
+                        class="flex items-center gap-1 text-txt-secondary hover:text-txt-primary transition-colors"
                         aria-label="이전 단계"
                     >
                         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -129,10 +153,10 @@ pub fn ApplicantLayout(children: Children) -> impl IntoView {
                     </button>
 
                     // Title
-                    <h1 class="text-sm font-semibold text-gray-900">"장기요양 신청"</h1>
+                    <h1 class="text-sm font-semibold text-txt-primary">"장기요양 신청"</h1>
 
                     // Step counter
-                    <span class="text-sm text-gray-500">
+                    <span class="text-sm text-txt-tertiary">
                         {format!("{current_step} / {total_steps}")}
                     </span>
                 </div>
@@ -149,17 +173,17 @@ pub fn ApplicantLayout(children: Children) -> impl IntoView {
             </div>
 
             // Page content
-            <main class="max-w-2xl mx-auto px-4 py-6">
+            <main class="max-w-2xl mx-auto px-4 py-6 animate-fade-in">
                 {children()}
             </main>
 
             // Bottom action bar
-            <div class="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 z-40">
+            <div class="fixed bottom-0 inset-x-0 bg-surface-card shadow-[0_-2px_8px_rgba(0,0,0,0.06)] z-40">
                 <div class="max-w-2xl mx-auto flex items-center justify-between px-4 py-3">
-                    <button class="px-6 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                    <button class="px-6 py-2.5 text-sm font-medium text-txt-secondary bg-surface-subtle rounded-xl hover:bg-gray-200 transition-colors">
                         "이전 단계"
                     </button>
-                    <button class="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                    <button class="px-6 py-2.5 text-sm font-medium text-white bg-primary rounded-xl hover:bg-primary-hover active:scale-[0.98] transition-all">
                         "다음 단계"
                     </button>
                 </div>

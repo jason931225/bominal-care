@@ -48,7 +48,7 @@ pub struct PaginatedCarePlans {
     pub total: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct CarePlanWithDetails {
     pub care_plan: CarePlan,
     pub visits: Vec<Visit>,

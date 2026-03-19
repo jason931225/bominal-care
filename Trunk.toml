@@ -1,0 +1,21 @@
+[build]
+target = "index.html"
+dist = "dist"
+filehash = true
+no_optimize = true
+
+[serve]
+port = 4000
+
+[[proxy]]
+rewrite = "/api/"
+backend = "http://localhost:4001/api/"
+
+[watch]
+watch = ["crates/app/src", "style"]
+
+# Pre-compress assets with brotli and gzip for CDN serving
+[[hooks]]
+stage = "post_build"
+command = "sh"
+command_arguments = ["-c", "find dist -type f \\( -name '*.wasm' -o -name '*.js' -o -name '*.css' -o -name '*.html' \\) -exec sh -c 'brotli -f -q 11 \"$1\" && gzip -kf9 \"$1\"' _ {} \\;"]

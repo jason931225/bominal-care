@@ -69,8 +69,8 @@ pub struct PersonProfileInput {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct SeniorProfileInput {
     pub person_id: Uuid,
-    #[validate(range(min = 1, max = 5))]
-    pub care_level: Option<i32>,
+    pub care_level: Option<CareLevelEnum>,
+    pub copayment_tier: Option<CopaymentTier>,
     pub has_ltci_certification: bool,
     pub ltci_number: Option<String>,
     pub primary_diagnosis: Option<String>,
@@ -119,6 +119,17 @@ pub struct CarePlanInput {
     pub start_date: Option<DateTime<Utc>>,
     pub end_date: Option<DateTime<Utc>>,
     pub goals: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct UpdateCarePlanInput {
+    #[validate(length(min = 1))]
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub start_date: Option<DateTime<Utc>>,
+    pub end_date: Option<DateTime<Utc>>,
+    pub goals: Option<serde_json::Value>,
+    pub provider_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -201,6 +212,23 @@ pub struct MedicationInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct UpdateMedicationInput {
+    #[validate(length(min = 1))]
+    pub name: Option<String>,
+    #[validate(length(min = 1))]
+    pub dosage: Option<String>,
+    #[validate(length(min = 1))]
+    pub form: Option<String>,
+    pub frequency: Option<MedicationFrequency>,
+    pub prescribed_by: Option<String>,
+    pub start_date: Option<DateTime<Utc>>,
+    pub end_date: Option<DateTime<Utc>>,
+    pub is_active: Option<bool>,
+    pub side_effects: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MedicationScheduleInput {
     pub medication_id: Uuid,
     #[validate(length(min = 1))]
@@ -222,6 +250,17 @@ pub struct AppointmentInput {
     pub institution_name: String,
     pub institution_type: Option<ProviderType>,
     pub appointment_date: DateTime<Utc>,
+    pub purpose: Option<String>,
+    pub notes: Option<String>,
+    pub address: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct UpdateAppointmentInput {
+    #[validate(length(min = 1))]
+    pub institution_name: Option<String>,
+    pub institution_type: Option<ProviderType>,
+    pub appointment_date: Option<DateTime<Utc>>,
     pub purpose: Option<String>,
     pub notes: Option<String>,
     pub address: Option<String>,

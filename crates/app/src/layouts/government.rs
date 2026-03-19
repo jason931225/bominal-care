@@ -1,16 +1,20 @@
 use leptos::prelude::*;
 use leptos_router::components::A;
 
+use crate::i18n::t;
+
 // ---------------------------------------------------------------------------
 // Navigation data — 7 items for government portal
 // ---------------------------------------------------------------------------
 
+/// A single navigation entry in the government sidebar.
 struct NavItem {
     href: &'static str,
     label: &'static str,
     icon_path: &'static str,
 }
 
+/// All navigation items displayed in the government portal sidebar.
 const NAV_ITEMS: &[NavItem] = &[
     NavItem { href: "/gov", label: "대시보드", icon_path: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
     NavItem { href: "/gov/providers", label: "기관", icon_path: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
@@ -22,29 +26,35 @@ const NAV_ITEMS: &[NavItem] = &[
 ];
 
 // ---------------------------------------------------------------------------
-// Government layout — indigo color scheme, left sidebar
+// Government layout — purple/violet color scheme, left sidebar
 // ---------------------------------------------------------------------------
 
-/// Government portal layout with indigo color scheme.
-/// Left sidebar (w-60) with 7 nav items.
-/// District/department info displayed in the top bar.
+/// Government portal layout with purple/violet accent (`portal-government`).
+///
+/// Uses CSS custom properties `--portal-accent` and `--portal-accent-light`
+/// scoped via `data-portal="government"` on the root element.
+///
+/// Structure:
+/// - Left sidebar (w-60) with 7 nav items, logo, and user info
+/// - Top bar showing district/department context
+/// - Scrollable main content area with fade-in animation
 #[component]
 pub fn GovernmentLayout(children: Children) -> impl IntoView {
     view! {
-        <div class="flex h-screen bg-slate-50">
+        <div data-portal="government" class="flex h-screen bg-surface-page">
             // Sidebar
-            <aside class="w-60 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col">
+            <aside class="w-60 flex-shrink-0 bg-white shadow-md flex flex-col">
                 // Logo
-                <div class="h-16 flex items-center px-4 border-b border-slate-200">
+                <div class="h-16 flex items-center px-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-indigo-700 rounded-lg flex items-center justify-center">
+                        <div class="w-8 h-8 bg-portal-government rounded-lg flex items-center justify-center">
                             <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
                             </svg>
                         </div>
                         <div>
-                            <p class="text-sm font-bold text-gray-900">"시니어케어"</p>
-                            <p class="text-xs text-gray-500">"정부 포털"</p>
+                            <p class="text-sm font-bold text-gray-900">{t("nav.portal.government")}</p>
+                            <p class="text-xs text-gray-500">{t("nav.gov_portal")}</p>
                         </div>
                     </div>
                 </div>
@@ -58,7 +68,7 @@ pub fn GovernmentLayout(children: Children) -> impl IntoView {
                                 <li>
                                     <A
                                         href=item.href
-                                        attr:class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                                        attr:class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors text-gray-600 hover:bg-[var(--portal-accent-light)] hover:text-[var(--portal-accent)]"
                                     >
                                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                             <path stroke-linecap="round" stroke-linejoin="round" d=item.icon_path />
@@ -72,24 +82,31 @@ pub fn GovernmentLayout(children: Children) -> impl IntoView {
                 </nav>
 
                 // User info
-                <div class="p-4 border-t border-slate-200">
+                <div class="p-4">
                     <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
-                            <span class="text-xs font-semibold text-indigo-700">"담"</span>
+                        <div class="w-8 h-8 bg-[var(--portal-accent-light)] rounded-full flex items-center justify-center">
+                            <span class="text-xs font-semibold text-[var(--portal-accent)]">"담"</span>
                         </div>
                         <div class="flex-1 min-w-0">
                             <p class="text-sm font-medium text-gray-900 truncate">"담당자"</p>
                             <p class="text-xs text-gray-500 truncate">"노인복지팀장"</p>
                         </div>
-                        <a
-                            href="/auth/signin"
+                        <button
                             class="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                            aria-label="로그아웃"
+                            aria-label=t("common.logout")
+                            on:click=move |_| {
+                                leptos::task::spawn_local(async move {
+                                    let _ = crate::api::post_no_body("/api/auth/logout").await;
+                                    if let Some(window) = leptos::web_sys::window() {
+                                        let _ = window.location().set_href("/auth/signin");
+                                    }
+                                });
+                            }
                         >
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
                             </svg>
-                        </a>
+                        </button>
                     </div>
                 </div>
             </aside>
@@ -97,26 +114,26 @@ pub fn GovernmentLayout(children: Children) -> impl IntoView {
             // Main area
             <div class="flex-1 flex flex-col overflow-hidden">
                 // Top bar with district/department info
-                <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0">
+                <header class="h-16 bg-white shadow-sm flex items-center justify-between px-6 flex-shrink-0">
                     <div class="flex items-center gap-3">
                         <div class="flex items-center gap-2">
-                            <div class="w-2 h-2 bg-indigo-600 rounded-full" />
+                            <div class="w-2 h-2 bg-[var(--portal-accent)] rounded-full" />
                             <span class="text-sm font-semibold text-gray-900">"서울특별시 강남구청"</span>
                         </div>
                         <span class="text-gray-300">"|"</span>
                         <span class="text-sm text-gray-500">"노인복지과 장기요양팀"</span>
                     </div>
                     <div class="flex items-center gap-3">
-                        <button class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                        <a href="/gov/audit" class="p-2 text-gray-500 hover:text-[var(--portal-accent)] hover:bg-[var(--portal-accent-light)] rounded-lg transition-colors">
                             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                             </svg>
-                        </button>
+                        </a>
                     </div>
                 </header>
 
                 // Page content
-                <main class="flex-1 overflow-y-auto p-6">
+                <main class="flex-1 overflow-y-auto p-6 animate-fade-in bg-surface-page">
                     {children()}
                 </main>
             </div>

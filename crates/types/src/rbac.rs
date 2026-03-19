@@ -34,6 +34,15 @@ pub enum Resource {
     AuditLog,
     Referral,
     Appointment,
+    Prescription,
+    ClinicalEncounter,
+    LabResult,
+    DocumentTransfer,
+    Dispensing,
+    WellnessCheckin,
+    EmergencyEvent,
+    Handoff,
+    AccessPolicy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Display, EnumString, EnumIter)]
@@ -47,6 +56,8 @@ pub enum Action {
     List,
     Approve,
     Reject,
+    Sign,
+    Transfer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Display, EnumString)]
@@ -57,6 +68,7 @@ pub enum Scope {
     Assigned,
     Org,
     All,
+    Linked,
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +326,25 @@ static ROLE_PERMISSIONS: Lazy<HashMap<UserRole, Vec<Permission>>> = Lazy::new(||
             p(CarePlan, List, Own),
             p(Referral, Read, Own),
             p(Referral, List, Own),
+            p(Notification, Read, Own),
+            p(Notification, List, Own),
+            p(Notification, Update, Own),
+        ],
+    );
+
+    // --- PHARMACY_STAFF ---
+    map.insert(
+        UserRole::PharmacyStaff,
+        vec![
+            p(Profile, Read, Own),
+            p(Profile, Update, Own),
+            p(Prescription, Read, Linked),
+            p(Prescription, List, Linked),
+            p(Dispensing, Create, Linked),
+            p(Dispensing, Read, Linked),
+            p(Dispensing, List, Linked),
+            p(Medication, Read, Linked),
+            p(Medication, List, Linked),
             p(Notification, Read, Own),
             p(Notification, List, Own),
             p(Notification, Update, Own),

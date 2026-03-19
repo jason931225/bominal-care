@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Bominal Care — 시니어 웰니스 중개플랫폼 | Bominal Care Wellness Marketplace" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1a73e8" />
+    <title>Bominal Care | Bominal Care</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Pretendard Variable"', 'Pretendard', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'Roboto', '"Helvetica Neue"', '"Segoe UI"', '"Apple SD Gothic Neo"', '"Noto Sans KR"', '"Malgun Gothic"', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: { DEFAULT: '#3182F6', hover: '#1B64DA', light: '#E8F3FF' },
+                        surface: { card: '#FFFFFF', page: '#F2F4F6', subtle: '#F8F9FA' },
+                        txt: { primary: '#191F28', secondary: '#4E5968', tertiary: '#8B95A1', disabled: '#B0B8C1' },
+                        danger: { DEFAULT: '#F04452', light: '#FFF0F1' },
+                        success: { DEFAULT: '#03B26C', light: '#E8FAF0' },
+                        warning: { DEFAULT: '#FF9200', light: '#FFF8E6' },
+                        info: { DEFAULT: '#3182F6', light: '#E8F3FF' },
+                        portal: {
+                            senior: '#3182F6',
+                            family: '#6366F1',
+                            caregiver: '#14B8A6',
+                            internal: '#64748B',
+                            government: '#8B5CF6',
+                        },
+                    },
+                    animation: {
+                        'fade-in': 'fade-in 0.3s ease-out',
+                        'slide-up': 'slide-up 0.3s ease-out',
+                        'skeleton-shimmer': 'skeleton-shimmer 1.8s ease-in-out infinite',
+                        'pulse-ring': 'pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },
+                        'slide-up': { from: { opacity: '0', transform: 'translateY(8px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+                        'skeleton-shimmer': { '0%': { backgroundPosition: '-200% 0' }, '100%': { backgroundPosition: '200% 0' } },
+                        'pulse-ring': { '0%, 100%': { boxShadow: '0 0 0 0 rgba(240, 68, 82, 0.4)' }, '50%': { boxShadow: '0 0 0 12px rgba(240, 68, 82, 0)' } },
+                    },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-surface-page text-txt-primary antialiased font-sans">
+    <div id="app">
+        <div class="min-h-screen flex items-center justify-center">
+            <div class="text-center">
+                <div class="relative h-12 w-12 mx-auto">
+                    <div class="absolute inset-0 rounded-full border-[3px] border-surface-subtle"></div>
+                    <div class="absolute inset-0 rounded-full border-[3px] border-transparent border-t-primary animate-spin"></div>
+                </div>
+                <p class="mt-5 text-sm font-medium text-txt-tertiary tracking-tight">Bominal Care</p>
+            </div>
+        </div>
+    </div>
+    <link data-trunk rel="rust" data-wasm-opt="0" href="crates/app/Cargo.toml" />
+    <link data-trunk rel="css" href="style/main.css" />
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+      }
+    </script>
+</body>
+</html>

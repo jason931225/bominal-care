@@ -4,3 +4,4 @@ pub mod family;
 pub mod internal;
 pub mod government;
 pub mod caregiver;
+pub mod medical;

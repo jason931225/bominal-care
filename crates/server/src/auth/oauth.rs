@@ -316,6 +316,8 @@ pub async fn oauth_callback(
         role: row.1,
         kyc_level: row.2,
         tenant_id: None,
+        person_id: None,
+        provider_id: None,
     };
 
     let _ = session.insert(SESSION_USER_KEY, &auth_user).await;
