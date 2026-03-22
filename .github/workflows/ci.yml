@@ -12,7 +12,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  SQLX_OFFLINE: true
 
 jobs:
   check:
@@ -42,10 +41,6 @@ jobs:
 
       - name: Run clippy
         run: cargo clippy -- -D warnings
-
-      - name: Verify sqlx offline cache
-        run: cargo sqlx prepare --check --workspace
-        continue-on-error: true
 
       - name: Run tests
         run: cargo test

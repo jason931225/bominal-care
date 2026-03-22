@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use bominal_types::CaregiverApplication;
 
 // =============================================================================
 // 17. ApplyOverviewPage — application landing / CTA page
@@ -63,8 +64,8 @@ fn ApplyStepPreview(
 #[component]
 pub fn ApplyIdentityPage() -> impl IntoView {
     let name = RwSignal::new(String::new());
-    let national_id = RwSignal::new(String::new());
     let phone = RwSignal::new(String::new());
+    let verified = RwSignal::new(false);
 
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-5">
@@ -82,16 +83,6 @@ pub fn ApplyIdentityPage() -> impl IntoView {
                     />
                 </div>
                 <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">"주민등록번호"<span class="text-red-500 ml-0.5">"*"</span></label>
-                    <input
-                        type="text"
-                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                        placeholder="000000-0000000"
-                        prop:value=move || national_id.get()
-                        on:input=move |ev| national_id.set(event_target_value(&ev))
-                    />
-                </div>
-                <div class="space-y-1">
                     <label class="text-sm font-medium text-gray-700">"휴대전화"<span class="text-red-500 ml-0.5">"*"</span></label>
                     <input
                         type="tel"
@@ -100,6 +91,29 @@ pub fn ApplyIdentityPage() -> impl IntoView {
                         prop:value=move || phone.get()
                         on:input=move |ev| phone.set(event_target_value(&ev))
                     />
+                </div>
+                // PASS 본인인증 — 주민등록번호 수집 대신 통신사 인증 사용 (개인정보보호법 준수)
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">"본인 인증"<span class="text-red-500 ml-0.5">"*"</span></label>
+                    <button
+                        type="button"
+                        class="w-full py-3 border border-teal-600 text-teal-700 font-medium rounded-lg hover:bg-teal-50 flex items-center justify-center gap-2"
+                        on:click=move |_| {
+                            if let Some(window) = leptos::web_sys::window() {
+                                let _ = window.alert_with_message("본인인증 서비스는 준비 중입니다");
+                            }
+                        }
+                    >
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                        "PASS 본인인증"
+                    </button>
+                    {move || if verified.get() {
+                        Some(view! { <p class="text-xs text-green-600 mt-1">"인증이 완료되었습니다."</p> })
+                    } else {
+                        None
+                    }}
                 </div>
             </div>
 
@@ -448,6 +462,10 @@ fn ReferenceForm(index: u32) -> impl IntoView {
 
 #[component]
 pub fn ApplyReviewPage() -> impl IntoView {
+    let agreed = RwSignal::new(false);
+    let submitting = RwSignal::new(false);
+    let error_msg = RwSignal::new(None::<String>);
+
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-5">
             <ApplyStepHeader step=7 total=7 title="검토 및 제출" />
@@ -482,14 +500,53 @@ pub fn ApplyReviewPage() -> impl IntoView {
             // Agreement
             <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
                 <label class="flex items-start gap-3">
-                    <input type="checkbox" class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500 mt-0.5" />
+                    <input
+                        type="checkbox"
+                        class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500 mt-0.5"
+                        prop:checked=move || agreed.get()
+                        on:change=move |_| agreed.update(|v| *v = !*v)
+                    />
                     <span class="text-sm text-gray-700">"입력한 정보가 사실과 다름없음을 확인하며, 개인정보 처리방침에 동의합니다."</span>
                 </label>
             </div>
 
+            // Error message
+            {move || error_msg.get().map(|msg| view! {
+                <p class="text-sm text-red-600 text-center">{msg}</p>
+            })}
+
             <div class="flex gap-3">
                 <a href="/caregiver/apply/references" class="flex-1 text-center py-3 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50">"이전"</a>
-                <button class="flex-1 py-3 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700">"지원서 제출"</button>
+                <button
+                    class="flex-1 py-3 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 disabled:opacity-50"
+                    disabled=move || !agreed.get() || submitting.get()
+                    on:click=move |_| {
+                        leptos::task::spawn_local(async move {
+                            submitting.set(true);
+                            error_msg.set(None);
+                            let body = serde_json::json!({
+                                "status": "pending",
+                                "languages_spoken": "ko",
+                                "has_dementia_experience": false,
+                                "has_overnight_availability": false,
+                                "smoking_status": false,
+                                "pet_friendly": false,
+                            });
+                            match crate::api::post::<CaregiverApplication, _>("/api/caregiver-applications", &body).await {
+                                Ok(resp) if resp.success => {
+                                    if let Some(window) = leptos::web_sys::window() {
+                                        let _ = window.location().set_href("/caregiver/apply/status");
+                                    }
+                                }
+                                Ok(resp) => error_msg.set(resp.error),
+                                Err(e) => error_msg.set(Some(e)),
+                            }
+                            submitting.set(false);
+                        });
+                    }
+                >
+                    {move || if submitting.get() { "처리 중..." } else { "지원서 제출" }}
+                </button>
             </div>
         </div>
     }
@@ -533,32 +590,83 @@ fn ReviewItem(
 
 #[component]
 pub fn ApplyStatusPage() -> impl IntoView {
+    let applications = LocalResource::new(|| {
+        crate::api::get::<Vec<CaregiverApplication>>("/api/caregiver-applications?status=mine")
+    });
+
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-6">
             <h1 class="text-xl font-bold text-gray-900">"지원 현황"</h1>
 
-            // Status card
-            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 text-center">
-                <div class="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <svg class="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </div>
-                <h2 class="text-lg font-bold text-gray-900">"심사 중"</h2>
-                <p class="text-sm text-gray-500 mt-1">"지원서가 검토되고 있습니다."</p>
-                <p class="text-xs text-gray-400 mt-2">"제출일: 2026.03.15"</p>
-            </div>
+            <Suspense fallback=move || view! {
+                <div class="animate-pulse bg-gray-200 rounded-xl h-32" />
+            }>
+                {move || Suspend::new(async move {
+                    match applications.await {
+                        Ok(resp) if resp.success => {
+                            let apps = resp.data.unwrap_or_default();
+                            if apps.is_empty() {
+                                view! {
+                                    <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 text-center">
+                                        <p class="text-gray-500">"제출된 지원서가 없습니다."</p>
+                                        <a href="/caregiver/apply" class="inline-block mt-3 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700">"지원하기"</a>
+                                    </div>
+                                }.into_any()
+                            } else {
+                                let app = apps.into_iter().next().unwrap();
+                                let status_label = format!("{:?}", app.status);
+                                let submitted = app.submitted_at
+                                    .map(|d| d.format("%Y.%m.%d").to_string())
+                                    .unwrap_or_else(|| "-".to_string());
+                                let is_approved = status_label == "Approved";
+                                let is_rejected = status_label == "Rejected";
+                                let is_pending = !is_approved && !is_rejected;
+                                view! {
+                                    <div class="space-y-5">
+                                        // Status card
+                                        <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 text-center">
+                                            <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3"
+                                                class=("bg-green-100", is_approved)
+                                                class=("bg-red-100", is_rejected)
+                                                class=("bg-yellow-100", is_pending)
+                                            >
+                                                <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                                                    class=("text-green-600", is_approved)
+                                                    class=("text-red-600", is_rejected)
+                                                    class=("text-yellow-600", is_pending)
+                                                >
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                            </div>
+                                            <h2 class="text-lg font-bold text-gray-900">
+                                                {if is_approved { "승인 완료" } else if is_rejected { "반려" } else { "심사 중" }}
+                                            </h2>
+                                            <p class="text-sm text-gray-500 mt-1">
+                                                {if is_approved { "지원서가 승인되었습니다." } else if is_rejected { "지원서가 반려되었습니다." } else { "지원서가 검토되고 있습니다." }}
+                                            </p>
+                                            <p class="text-xs text-gray-400 mt-2">"제출일: "{submitted}</p>
+                                        </div>
 
-            // Progress steps
-            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <h3 class="font-semibold text-gray-900 mb-4">"진행 상태"</h3>
-                <div class="space-y-4">
-                    <StatusStep label="지원서 제출" date="2026.03.15" done=true />
-                    <StatusStep label="서류 검토" date="2026.03.16" done=true />
-                    <StatusStep label="자격 확인" date="진행 중" done=false />
-                    <StatusStep label="최종 승인" date="" done=false />
-                </div>
-            </div>
+                                        // Progress steps
+                                        <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                                            <h3 class="font-semibold text-gray-900 mb-4">"진행 상태"</h3>
+                                            <div class="space-y-4">
+                                                <StatusStep label="지원서 제출" date="" done=true />
+                                                <StatusStep label="서류 검토" date="진행 중" done=is_approved || is_rejected />
+                                                <StatusStep label="자격 확인" date="" done=is_approved />
+                                                <StatusStep label="최종 승인" date="" done=is_approved />
+                                            </div>
+                                        </div>
+                                    </div>
+                                }.into_any()
+                            }
+                        }
+                        _ => view! {
+                            <p class="text-center text-gray-500 py-8">"데이터를 불러올 수 없습니다."</p>
+                        }.into_any(),
+                    }
+                })}
+            </Suspense>
 
             // Contact
             <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">

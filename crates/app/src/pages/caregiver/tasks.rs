@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use uuid::Uuid;
+use bominal_types::{Visit, Incident, DailyObservation};
 
 // =============================================================================
 // TaskCard — task list item with checkbox toggle
@@ -97,12 +97,7 @@ fn NoteCard(
 #[component]
 pub fn TasksListPage() -> impl IntoView {
     let active_tab = RwSignal::new(0_usize);
-
-    let id1 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"task-bp-check-kim").to_string();
-    let id2 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"task-med-check-lee").to_string();
-    let id3 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"task-bath-prep-park").to_string();
-    let id4 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"task-walk-choi").to_string();
-    let id5 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"task-journal-kim").to_string();
+    let visits = LocalResource::new(|| crate::api::get::<Vec<Visit>>("/api/visits?status=in_progress"));
 
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-4">
@@ -128,48 +123,44 @@ pub fn TasksListPage() -> impl IntoView {
             </div>
 
             // Task list
-            <div class="space-y-3">
-                <TaskCard
-                    id=id1
-                    title="김복순님 혈압 측정"
-                    client="김복순님"
-                    time="14:00"
-                    priority="높음"
-                    done=false
-                />
-                <TaskCard
-                    id=id2
-                    title="이순자님 투약 확인"
-                    client="이순자님"
-                    time="09:00"
-                    priority="높음"
-                    done=true
-                />
-                <TaskCard
-                    id=id3
-                    title="박영자님 목욕 준비"
-                    client="박영자님"
-                    time="11:30"
-                    priority="보통"
-                    done=true
-                />
-                <TaskCard
-                    id=id4
-                    title="최영희님 산책 동행"
-                    client="최영희님"
-                    time="16:30"
-                    priority="보통"
-                    done=false
-                />
-                <TaskCard
-                    id=id5
-                    title="김복순님 일지 작성"
-                    client="김복순님"
-                    time="17:00"
-                    priority="낮음"
-                    done=false
-                />
-            </div>
+            <Suspense fallback=move || view! {
+                <div class="animate-pulse bg-gray-200 rounded-xl h-20" />
+            }>
+                {move || Suspend::new(async move {
+                    match visits.await {
+                        Ok(resp) if resp.success => {
+                            let items = resp.data.unwrap_or_default();
+                            if items.is_empty() {
+                                view! {
+                                    <p class="text-center text-gray-500 py-8">"진행 중인 업무가 없습니다."</p>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <div class="space-y-3">
+                                        {items.into_iter().map(|visit| {
+                                            let id = visit.id.to_string();
+                                            let time = visit.scheduled_start.format("%H:%M").to_string();
+                                            view! {
+                                                <TaskCard
+                                                    id=id
+                                                    title=format!("방문 {}", time)
+                                                    client="고객".to_string()
+                                                    time=time
+                                                    priority="보통".to_string()
+                                                    done=false
+                                                />
+                                            }
+                                        }).collect_view()}
+                                    </div>
+                                }.into_any()
+                            }
+                        }
+                        _ => view! {
+                            <p class="text-center text-gray-500 py-8">"데이터를 불러올 수 없습니다."</p>
+                        }.into_any(),
+                    }
+                })}
+            </Suspense>
         </div>
     }
 }
@@ -354,6 +345,8 @@ pub fn NoteNewPage() -> impl IntoView {
     let selected_client = RwSignal::new(String::new());
     let selected_category = RwSignal::new(String::new());
     let content = RwSignal::new(String::new());
+    let submitting = RwSignal::new(false);
+    let error_msg = RwSignal::new(None::<String>);
 
     let clients = vec!["김복순님", "이순자님", "박영자님", "최영희님", "정순옥님"];
     let categories = vec!["건강", "식사", "정서", "활동", "기타"];
@@ -430,7 +423,41 @@ pub fn NoteNewPage() -> impl IntoView {
                 </div>
             </div>
 
-            <button class="w-full py-4 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700">"기록 저장"</button>
+            // Error message
+            {move || error_msg.get().map(|msg| view! {
+                <p class="text-sm text-red-600 text-center">{msg}</p>
+            })}
+
+            <button
+                class="w-full py-4 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 disabled:opacity-50"
+                disabled=move || submitting.get()
+                on:click=move |_| {
+                    let client = selected_client.get();
+                    let category = selected_category.get();
+                    let note_content = content.get();
+                    leptos::task::spawn_local(async move {
+                        submitting.set(true);
+                        error_msg.set(None);
+                        let body = serde_json::json!({
+                            "client": client,
+                            "category": category,
+                            "content": note_content,
+                        });
+                        match crate::api::post::<DailyObservation, _>("/api/observability", &body).await {
+                            Ok(resp) if resp.success => {
+                                if let Some(window) = leptos::web_sys::window() {
+                                    let _ = window.location().set_href("/caregiver/notes");
+                                }
+                            }
+                            Ok(resp) => error_msg.set(resp.error),
+                            Err(e) => error_msg.set(Some(e)),
+                        }
+                        submitting.set(false);
+                    });
+                }
+            >
+                {move || if submitting.get() { "처리 중..." } else { "기록 저장" }}
+            </button>
         </div>
     }
 }
@@ -446,6 +473,9 @@ pub fn IncidentPage() -> impl IntoView {
     let severity = RwSignal::new(String::new());
     let description = RwSignal::new(String::new());
     let actions_taken = RwSignal::new(String::new());
+    let submitting = RwSignal::new(false);
+    let error_msg = RwSignal::new(None::<String>);
+    let success_msg = RwSignal::new(None::<String>);
 
     let clients = vec!["김복순님", "이순자님", "박영자님", "최영희님", "정순옥님"];
     let incident_types = vec!["낙상", "투약 오류", "피부 손상", "행동 변화", "기타"];
@@ -559,7 +589,47 @@ pub fn IncidentPage() -> impl IntoView {
                 </div>
             </div>
 
-            <button class="w-full py-4 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700">"보고서 제출"</button>
+            // Feedback messages
+            {move || error_msg.get().map(|msg| view! {
+                <p class="text-sm text-red-600 text-center">{msg}</p>
+            })}
+            {move || success_msg.get().map(|msg| view! {
+                <p class="text-sm text-green-600 text-center">{msg}</p>
+            })}
+
+            <button
+                class="w-full py-4 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 disabled:opacity-50"
+                disabled=move || submitting.get()
+                on:click=move |_| {
+                    let client = selected_client.get();
+                    let itype = incident_type.get();
+                    let sev = severity.get();
+                    let desc = description.get();
+                    let actions = actions_taken.get();
+                    leptos::task::spawn_local(async move {
+                        submitting.set(true);
+                        error_msg.set(None);
+                        success_msg.set(None);
+                        let body = serde_json::json!({
+                            "client": client,
+                            "incident_type": itype,
+                            "severity": sev,
+                            "description": desc,
+                            "actions_taken": actions,
+                        });
+                        match crate::api::post::<Incident, _>("/api/incidents", &body).await {
+                            Ok(resp) if resp.success => {
+                                success_msg.set(Some("보고서가 제출되었습니다.".to_string()));
+                            }
+                            Ok(resp) => error_msg.set(resp.error),
+                            Err(e) => error_msg.set(Some(e)),
+                        }
+                        submitting.set(false);
+                    });
+                }
+            >
+                {move || if submitting.get() { "처리 중..." } else { "보고서 제출" }}
+            </button>
         </div>
     }
 }

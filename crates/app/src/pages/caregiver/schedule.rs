@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use uuid::Uuid;
+use bominal_types::Visit;
 
 use super::demo_visit_id;
 
@@ -15,6 +15,8 @@ pub fn ScheduleListPage() -> impl IntoView {
         ("월", "14"), ("화", "15"), ("수", "16"),
         ("목", "17"), ("금", "18"), ("토", "19"), ("일", "20"),
     ];
+
+    let visits = LocalResource::new(|| crate::api::get::<Vec<Visit>>("/api/visits"));
 
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-4">
@@ -41,20 +43,48 @@ pub fn ScheduleListPage() -> impl IntoView {
             </div>
 
             // Visit list for selected day
-            <div class="space-y-3">
-                {
-                    let id1 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"schedule-visit-1").to_string();
-                    let id2 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"schedule-visit-2").to_string();
-                    let id3 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"schedule-visit-3").to_string();
-                    let id4 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"schedule-visit-4").to_string();
-                    view! {
-                        <ScheduleVisitCard id=id1 time="09:00 - 11:00" client="이순자님" service="방문요양" status="완료" />
-                        <ScheduleVisitCard id=id2 time="11:30 - 12:30" client="박영자님" service="방문목욕" status="완료" />
-                        <ScheduleVisitCard id=id3 time="14:00 - 16:00" client="김복순님" service="방문요양" status="예정" />
-                        <ScheduleVisitCard id=id4 time="16:30 - 18:00" client="최영희님" service="방문간호" status="예정" />
+            <Suspense fallback=move || view! {
+                <div class="animate-pulse bg-gray-200 rounded-xl h-20" />
+            }>
+                {move || Suspend::new(async move {
+                    match visits.await {
+                        Ok(resp) if resp.success => {
+                            let items = resp.data.unwrap_or_default();
+                            if items.is_empty() {
+                                view! {
+                                    <p class="text-center text-gray-500 py-8">"오늘 예정된 방문이 없습니다."</p>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <div class="space-y-3">
+                                        {items.into_iter().map(|visit| {
+                                            let id = visit.id.to_string();
+                                            let time = format!(
+                                                "{} - {}",
+                                                visit.scheduled_start.format("%H:%M"),
+                                                visit.scheduled_end.format("%H:%M")
+                                            );
+                                            let status = format!("{}", visit.status);
+                                            view! {
+                                                <ScheduleVisitCard
+                                                    id=id
+                                                    time=time
+                                                    client="고객"
+                                                    service="방문요양"
+                                                    status=status
+                                                />
+                                            }
+                                        }).collect_view()}
+                                    </div>
+                                }.into_any()
+                            }
+                        }
+                        _ => view! {
+                            <p class="text-center text-gray-500 py-8">"데이터를 불러올 수 없습니다."</p>
+                        }.into_any(),
                     }
-                }
-            </div>
+                })}
+            </Suspense>
         </div>
     }
 }
@@ -68,8 +98,8 @@ fn ScheduleVisitCard(
     #[prop(into)] status: String,
 ) -> impl IntoView {
     let badge_cls = match status.as_str() {
-        "완료" => "text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700",
-        "진행중" => "text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700",
+        "완료" | "Completed" => "text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700",
+        "진행중" | "InProgress" => "text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700",
         _ => "text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600",
     };
     let href = format!("/caregiver/schedule/{id}");
@@ -212,6 +242,12 @@ fn CareChecklist() -> impl IntoView {
 pub fn CheckInPage() -> impl IntoView {
     let location_status = RwSignal::new("확인 중...");
     let is_verified = RwSignal::new(false);
+    let submitting = RwSignal::new(false);
+    let error_msg = RwSignal::new(None::<String>);
+
+    // Extract visit id from URL path — use a placeholder for now; in production
+    // this would come from a route param.
+    let visit_id = demo_visit_id();
 
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-6">
@@ -278,11 +314,42 @@ pub fn CheckInPage() -> impl IntoView {
                 >"위치 다시 확인"</button>
             </div>
 
+            // Error message
+            {move || error_msg.get().map(|msg| view! {
+                <p class="text-sm text-red-600 text-center">{msg}</p>
+            })}
+
             // Check-in button
-            <button
-                class="w-full py-4 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 disabled:opacity-50"
-                disabled=move || !is_verified.get()
-            >"체크인 완료"</button>
+            {
+                let visit_id = visit_id.clone();
+                view! {
+                    <button
+                        class="w-full py-4 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 disabled:opacity-50"
+                        disabled=move || !is_verified.get() || submitting.get()
+                        on:click=move |_| {
+                            let vid = visit_id.clone();
+                            leptos::task::spawn_local(async move {
+                                submitting.set(true);
+                                error_msg.set(None);
+                                let body = serde_json::json!({"latitude": 0.0, "longitude": 0.0});
+                                let url = format!("/api/visits/{}/check-in", vid);
+                                match crate::api::post::<Visit, _>(&url, &body).await {
+                                    Ok(resp) if resp.success => {
+                                        if let Some(window) = leptos::web_sys::window() {
+                                            let _ = window.location().set_href("/caregiver/schedule");
+                                        }
+                                    }
+                                    Ok(resp) => error_msg.set(resp.error),
+                                    Err(e) => error_msg.set(Some(e)),
+                                }
+                                submitting.set(false);
+                            });
+                        }
+                    >
+                        {move || if submitting.get() { "처리 중..." } else { "체크인 완료" }}
+                    </button>
+                }
+            }
         </div>
     }
 }
@@ -295,6 +362,10 @@ pub fn CheckInPage() -> impl IntoView {
 pub fn CheckOutPage() -> impl IntoView {
     let notes = RwSignal::new(String::new());
     let condition = RwSignal::new("양호".to_string());
+    let submitting = RwSignal::new(false);
+    let error_msg = RwSignal::new(None::<String>);
+
+    let visit_id = demo_visit_id();
 
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-6">
@@ -384,7 +455,48 @@ pub fn CheckOutPage() -> impl IntoView {
                 />
             </div>
 
-            <button class="w-full py-4 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700">"체크아웃 완료"</button>
+            // Error message
+            {move || error_msg.get().map(|msg| view! {
+                <p class="text-sm text-red-600 text-center">{msg}</p>
+            })}
+
+            {
+                let visit_id = visit_id.clone();
+                view! {
+                    <button
+                        class="w-full py-4 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 disabled:opacity-50"
+                        disabled=move || submitting.get()
+                        on:click=move |_| {
+                            let vid = visit_id.clone();
+                            let notes_val = notes.get();
+                            let cond_val = condition.get();
+                            leptos::task::spawn_local(async move {
+                                submitting.set(true);
+                                error_msg.set(None);
+                                let body = serde_json::json!({
+                                    "latitude": 0.0,
+                                    "longitude": 0.0,
+                                    "notes": notes_val,
+                                    "condition": cond_val,
+                                });
+                                let url = format!("/api/visits/{}/check-out", vid);
+                                match crate::api::post::<Visit, _>(&url, &body).await {
+                                    Ok(resp) if resp.success => {
+                                        if let Some(window) = leptos::web_sys::window() {
+                                            let _ = window.location().set_href("/caregiver/schedule");
+                                        }
+                                    }
+                                    Ok(resp) => error_msg.set(resp.error),
+                                    Err(e) => error_msg.set(Some(e)),
+                                }
+                                submitting.set(false);
+                            });
+                        }
+                    >
+                        {move || if submitting.get() { "처리 중..." } else { "체크아웃 완료" }}
+                    </button>
+                }
+            }
         </div>
     }
 }

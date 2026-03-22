@@ -150,8 +150,10 @@ async fn main() {
         .with_state(state);
 
     // Start server with graceful shutdown
-    let bind_addr =
-        std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:4001".to_string());
+    let bind_addr = std::env::var("PORT")
+        .map(|p| format!("0.0.0.0:{p}"))
+        .or_else(|_| std::env::var("BIND_ADDR"))
+        .unwrap_or_else(|_| "0.0.0.0:4001".to_string());
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
         .expect("Failed to bind listener");

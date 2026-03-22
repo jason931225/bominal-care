@@ -21,11 +21,46 @@ pub fn PrescriptionsPage() -> impl IntoView {
     let (duration, set_duration) = signal(String::new());
     let (notes, set_notes) = signal(String::new());
     let (submitting, set_submitting) = signal(false);
+    let error_msg = RwSignal::new(None::<String>);
+    let success_msg = RwSignal::new(None::<String>);
 
     let on_submit = move |_| {
+        let med_name_val = med_name.get();
+        let dosage_val = dosage.get();
+        let frequency_val = frequency.get();
+        let duration_val = duration.get();
+        let notes_val = notes.get();
+
+        if med_name_val.is_empty() || dosage_val.is_empty() || frequency_val.is_empty() {
+            error_msg.set(Some(t("medical.prescriptions.required_fields").to_string()));
+            return;
+        }
+
+        error_msg.set(None);
+        success_msg.set(None);
         set_submitting.set(true);
+
         leptos::task::spawn_local(async move {
-            // Placeholder: submit prescription to API
+            let duration_days: Option<i32> = duration_val.parse::<i32>().ok();
+            let body = serde_json::json!({
+                "medication_name": med_name_val,
+                "dosage": dosage_val,
+                "frequency": frequency_val,
+                "duration_days": duration_days,
+                "instructions": if notes_val.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(notes_val) },
+            });
+            match crate::api::post::<serde_json::Value, _>("/api/prescriptions", &body).await {
+                Ok(resp) if resp.success => {
+                    success_msg.set(Some(t("medical.prescriptions.success").to_string()));
+                    set_med_name.set(String::new());
+                    set_dosage.set(String::new());
+                    set_frequency.set(String::new());
+                    set_duration.set(String::new());
+                    set_notes.set(String::new());
+                }
+                Ok(resp) => error_msg.set(resp.error.or_else(|| Some(t("common.error_generic").to_string()))),
+                Err(e) => error_msg.set(Some(e)),
+            }
             set_submitting.set(false);
         });
     };
@@ -44,6 +79,14 @@ pub fn PrescriptionsPage() -> impl IntoView {
                 </svg>
                 <p class="text-sm text-[var(--portal-accent)] font-medium">{t("medical.prescriptions.no_patient")}</p>
             </div>
+
+            // Success / error feedback
+            {move || error_msg.get().map(|msg| view! {
+                <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{msg}</div>
+            })}
+            {move || success_msg.get().map(|msg| view! {
+                <div class="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-700">{msg}</div>
+            })}
 
             // Prescription form
             <div class="bg-surface-card rounded-2xl p-5 shadow-sm space-y-4">

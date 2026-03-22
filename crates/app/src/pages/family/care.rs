@@ -37,13 +37,57 @@ pub fn MedicationsPage() -> impl IntoView {
 /// Shows the senior's active care plan with goals and schedule.
 #[component]
 pub fn CarePlanPage() -> impl IntoView {
+    let data = LocalResource::new(|| {
+        crate::api::get::<Vec<bominal_types::CarePlan>>("/api/care-plans")
+    });
+
     view! {
         <div class="p-6 space-y-8">
             <div>
                 <h1 class="text-xl font-bold text-txt-primary">"케어 플랜"</h1>
                 <p class="text-sm text-txt-secondary mt-1">"어르신의 돌봄 계획입니다."</p>
             </div>
-            <div class="skeleton h-4 w-48"></div>
+
+            <Suspense fallback=move || view! { <div class="animate-pulse bg-gray-200 rounded-xl h-20" /> }>
+                {move || Suspend::new(async move {
+                    match data.await {
+                        Ok(resp) if resp.success => {
+                            let items = resp.data.unwrap_or_default();
+                            if items.is_empty() {
+                                view! {
+                                    <p class="text-center text-txt-secondary py-8">"데이터가 없습니다."</p>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <div class="space-y-3">
+                                        {items.into_iter().map(|plan| {
+                                            let title = plan.title.clone();
+                                            let description = plan.description.clone().unwrap_or_default();
+                                            let status = format!("{}", plan.status);
+                                            view! {
+                                                <div class="bg-surface-card rounded-2xl p-5 shadow-sm space-y-3">
+                                                    <div class="flex justify-between items-center">
+                                                        <p class="font-semibold text-txt-primary">{title}</p>
+                                                        <span class="text-xs px-2 py-1 rounded-full bg-[var(--portal-accent-light)] text-[var(--portal-accent)]">{status}</span>
+                                                    </div>
+                                                    {if !description.is_empty() {
+                                                        view! { <p class="text-sm text-txt-secondary">{description}</p> }.into_any()
+                                                    } else {
+                                                        view! { <></> }.into_any()
+                                                    }}
+                                                </div>
+                                            }
+                                        }).collect::<Vec<_>>()}
+                                    </div>
+                                }.into_any()
+                            }
+                        }
+                        _ => view! {
+                            <p class="text-center text-txt-secondary py-8">"데이터를 불러올 수 없습니다."</p>
+                        }.into_any(),
+                    }
+                })}
+            </Suspense>
         </div>
     }
 }

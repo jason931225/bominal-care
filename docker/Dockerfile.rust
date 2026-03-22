@@ -56,12 +56,10 @@ RUN mkdir -p crates/types/src crates/db/src crates/server/src crates/app/src && 
     echo "pub fn dummy() {}" > crates/app/src/lib.rs && \
     cargo build --release -p bominal-server 2>/dev/null || true
 
-# Copy actual source and sqlx offline data
+# Copy actual source
 COPY crates/ crates/
-COPY .sqlx/ .sqlx/
 
-# Build server binary with offline sqlx checking
-ENV SQLX_OFFLINE=true
+# Build server binary
 RUN cargo build --release -p bominal-server
 
 # --- Stage 3: Runtime ---

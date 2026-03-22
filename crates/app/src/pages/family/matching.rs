@@ -9,6 +9,8 @@ use leptos::prelude::*;
 pub fn MatchingSearchPage() -> impl IntoView {
     let (region, set_region) = signal(String::new());
     let (service, set_service) = signal(String::new());
+    let submitting = RwSignal::new(false);
+    let error_msg = RwSignal::new(None::<String>);
 
     view! {
         <div class="p-6 space-y-8 max-w-lg">
@@ -41,12 +43,37 @@ pub fn MatchingSearchPage() -> impl IntoView {
                         <option value="day_care">"주야간보호"</option>
                     </select>
                 </div>
-                <a
-                    href="/family/matching/results"
-                    class="block w-full text-center bg-[var(--portal-accent)] text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:opacity-90 active:scale-[0.98] transition-all"
+                {move || error_msg.get().map(|msg| view! {
+                    <p class="text-sm text-danger">{msg}</p>
+                })}
+                <button
+                    class="w-full bg-[var(--portal-accent)] text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50"
+                    prop:disabled=move || submitting.get()
+                    on:click=move |_| {
+                        let region_val = region.get();
+                        let service_val = service.get();
+                        leptos::task::spawn_local(async move {
+                            submitting.set(true);
+                            error_msg.set(None);
+                            let body = serde_json::json!({
+                                "region": region_val,
+                                "service_category": service_val,
+                            });
+                            match crate::api::post::<serde_json::Value, _>("/api/match-requests", &body).await {
+                                Ok(resp) if resp.success => {
+                                    if let Some(window) = leptos::web_sys::window() {
+                                        let _ = window.location().set_href("/family/matching/results");
+                                    }
+                                }
+                                Ok(resp) => error_msg.set(resp.error),
+                                Err(e) => error_msg.set(Some(e)),
+                            }
+                            submitting.set(false);
+                        });
+                    }
                 >
-                    "매칭 검색"
-                </a>
+                    {move || if submitting.get() { "검색 중..." } else { "매칭 검색" }}
+                </button>
             </div>
         </div>
     }
@@ -55,13 +82,55 @@ pub fn MatchingSearchPage() -> impl IntoView {
 /// Displays match recommendation results with compatibility scores.
 #[component]
 pub fn MatchingResultsPage() -> impl IntoView {
+    let data = LocalResource::new(|| {
+        crate::api::get::<Vec<bominal_types::MatchRecommendation>>("/api/match-requests")
+    });
+
     view! {
         <div class="p-6 space-y-8">
             <div>
                 <h1 class="text-xl font-bold text-txt-primary">"매칭 결과"</h1>
                 <p class="text-sm text-txt-secondary mt-1">"추천 요양보호사 목록입니다."</p>
             </div>
-            <div class="skeleton h-4 w-48"></div>
+
+            <Suspense fallback=move || view! { <div class="animate-pulse bg-gray-200 rounded-xl h-20" /> }>
+                {move || Suspend::new(async move {
+                    match data.await {
+                        Ok(resp) if resp.success => {
+                            let items = resp.data.unwrap_or_default();
+                            if items.is_empty() {
+                                view! {
+                                    <p class="text-center text-txt-secondary py-8">"매칭 결과가 없습니다."</p>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <div class="space-y-3">
+                                        {items.into_iter().map(|rec| {
+                                            let href = format!("/family/matching/{}", rec.id);
+                                            let score = rec.score;
+                                            let rank = rec.rank;
+                                            view! {
+                                                <a href=href class="block bg-surface-card rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+                                                    <div class="flex justify-between items-center">
+                                                        <div>
+                                                            <p class="font-medium text-txt-primary">{format!("추천 #{}", rank)}</p>
+                                                            <p class="text-sm text-txt-tertiary">{format!("매칭 점수: {:.0}", score)}</p>
+                                                        </div>
+                                                        <span class="text-xs px-2 py-1 rounded-full bg-[var(--portal-accent-light)] text-[var(--portal-accent)]">{format!("{:.0}점", score)}</span>
+                                                    </div>
+                                                </a>
+                                            }
+                                        }).collect::<Vec<_>>()}
+                                    </div>
+                                }.into_any()
+                            }
+                        }
+                        _ => view! {
+                            <p class="text-center text-txt-secondary py-8">"데이터를 불러올 수 없습니다."</p>
+                        }.into_any(),
+                    }
+                })}
+            </Suspense>
         </div>
     }
 }

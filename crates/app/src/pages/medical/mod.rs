@@ -36,6 +36,10 @@ use crate::i18n::t;
 /// quick action cards, and a recent activity feed.
 #[component]
 pub fn DashboardPage() -> impl IntoView {
+    let dashboard = LocalResource::new(|| {
+        crate::api::get::<serde_json::Value>("/api/dashboard?role=medical")
+    });
+
     view! {
         <div class="space-y-8">
             <PageHeader
@@ -44,28 +48,67 @@ pub fn DashboardPage() -> impl IntoView {
             />
 
             // KPI cards
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
-                    <p class="text-sm text-txt-tertiary">{t("medical.dashboard.active_sessions")}</p>
-                    <p class="text-2xl font-bold text-txt-primary mt-1">"0"</p>
-                    <p class="text-xs text-[var(--portal-accent)] mt-1">{t("medical.dashboard.active_sessions_sub")}</p>
+            <Suspense fallback=move || view! {
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="animate-pulse bg-gray-200 rounded-2xl h-24" />
+                    <div class="animate-pulse bg-gray-200 rounded-2xl h-24" />
+                    <div class="animate-pulse bg-gray-200 rounded-2xl h-24" />
+                    <div class="animate-pulse bg-gray-200 rounded-2xl h-24" />
                 </div>
-                <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
-                    <p class="text-sm text-txt-tertiary">{t("medical.dashboard.today_prescriptions")}</p>
-                    <p class="text-2xl font-bold text-txt-primary mt-1">"0"</p>
-                    <p class="text-xs text-txt-tertiary mt-1">{t("medical.dashboard.today_prescriptions_sub")}</p>
-                </div>
-                <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
-                    <p class="text-sm text-txt-tertiary">{t("medical.dashboard.today_appointments")}</p>
-                    <p class="text-2xl font-bold text-txt-primary mt-1">"0"</p>
-                    <p class="text-xs text-txt-tertiary mt-1">{t("medical.dashboard.today_appointments_sub")}</p>
-                </div>
-                <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
-                    <p class="text-sm text-txt-tertiary">{t("medical.dashboard.patients_seen")}</p>
-                    <p class="text-2xl font-bold text-txt-primary mt-1">"0"</p>
-                    <p class="text-xs text-txt-tertiary mt-1">{t("medical.dashboard.patients_seen_sub")}</p>
-                </div>
-            </div>
+            }>
+                {move || Suspend::new(async move {
+                    let (active_sessions, today_prescriptions, today_appointments, patients_seen) =
+                        match dashboard.await {
+                            Ok(resp) if resp.success => {
+                                let data = resp.data.unwrap_or_default();
+                                (
+                                    data.get("active_sessions")
+                                        .and_then(|v| v.as_i64())
+                                        .unwrap_or(0)
+                                        .to_string(),
+                                    data.get("today_prescriptions")
+                                        .and_then(|v| v.as_i64())
+                                        .unwrap_or(0)
+                                        .to_string(),
+                                    data.get("today_appointments")
+                                        .and_then(|v| v.as_i64())
+                                        .unwrap_or(0)
+                                        .to_string(),
+                                    data.get("patients_seen")
+                                        .and_then(|v| v.as_i64())
+                                        .unwrap_or(0)
+                                        .to_string(),
+                                )
+                            }
+                            _ => ("0".to_string(), "0".to_string(), "0".to_string(), "0".to_string()),
+                        };
+
+                    view! {
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
+                                <p class="text-sm text-txt-tertiary">{t("medical.dashboard.active_sessions")}</p>
+                                <p class="text-2xl font-bold text-txt-primary mt-1">{active_sessions}</p>
+                                <p class="text-xs text-[var(--portal-accent)] mt-1">{t("medical.dashboard.active_sessions_sub")}</p>
+                            </div>
+                            <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
+                                <p class="text-sm text-txt-tertiary">{t("medical.dashboard.today_prescriptions")}</p>
+                                <p class="text-2xl font-bold text-txt-primary mt-1">{today_prescriptions}</p>
+                                <p class="text-xs text-txt-tertiary mt-1">{t("medical.dashboard.today_prescriptions_sub")}</p>
+                            </div>
+                            <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
+                                <p class="text-sm text-txt-tertiary">{t("medical.dashboard.today_appointments")}</p>
+                                <p class="text-2xl font-bold text-txt-primary mt-1">{today_appointments}</p>
+                                <p class="text-xs text-txt-tertiary mt-1">{t("medical.dashboard.today_appointments_sub")}</p>
+                            </div>
+                            <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
+                                <p class="text-sm text-txt-tertiary">{t("medical.dashboard.patients_seen")}</p>
+                                <p class="text-2xl font-bold text-txt-primary mt-1">{patients_seen}</p>
+                                <p class="text-xs text-txt-tertiary mt-1">{t("medical.dashboard.patients_seen_sub")}</p>
+                            </div>
+                        </div>
+                    }.into_any()
+                })}
+            </Suspense>
 
             // Quick action cards
             <div>
@@ -116,7 +159,37 @@ pub fn DashboardPage() -> impl IntoView {
             // Recent activity feed
             <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
                 <h2 class="font-semibold text-txt-primary mb-3">{t("medical.dashboard.recent_activity")}</h2>
-                <EmptyState message=t("medical.dashboard.no_activity").to_string() />
+                <Suspense fallback=move || view! { <div class="animate-pulse bg-gray-200 rounded-xl h-20" /> }>
+                    {move || Suspend::new(async move {
+                        match dashboard.await {
+                            Ok(resp) if resp.success => {
+                                let data = resp.data.unwrap_or_default();
+                                let activity = data.get("recent_activity")
+                                    .and_then(|v| v.as_array())
+                                    .cloned()
+                                    .unwrap_or_default();
+                                if activity.is_empty() {
+                                    view! { <EmptyState message=t("medical.dashboard.no_activity").to_string() /> }.into_any()
+                                } else {
+                                    view! {
+                                        <ul class="space-y-2">
+                                            {activity.into_iter().map(|item| {
+                                                let msg = item.get("message")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("")
+                                                    .to_string();
+                                                view! {
+                                                    <li class="text-sm text-txt-secondary py-1 border-b border-gray-100 last:border-0">{msg}</li>
+                                                }
+                                            }).collect_view()}
+                                        </ul>
+                                    }.into_any()
+                                }
+                            }
+                            _ => view! { <EmptyState message=t("medical.dashboard.no_activity").to_string() /> }.into_any(),
+                        }
+                    })}
+                </Suspense>
             </div>
         </div>
     }

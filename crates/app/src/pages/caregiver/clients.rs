@@ -1,5 +1,6 @@
 use leptos::prelude::*;
-use uuid::Uuid;
+use chrono::Datelike;
+use bominal_types::PersonProfile;
 
 use super::demo_client_id;
 
@@ -10,6 +11,7 @@ use super::demo_client_id;
 #[component]
 pub fn ClientsListPage() -> impl IntoView {
     let search = RwSignal::new(String::new());
+    let clients = LocalResource::new(|| crate::api::get::<Vec<PersonProfile>>("/api/profile/seniors?caregiver=me"));
 
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-4">
@@ -30,22 +32,56 @@ pub fn ClientsListPage() -> impl IntoView {
             </div>
 
             // Client list
-            <div class="space-y-3">
-                {
-                    let id1 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"client-kim-boksun").to_string();
-                    let id2 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"client-lee-sunja").to_string();
-                    let id3 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"client-park-youngja").to_string();
-                    let id4 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"client-choi-younghee").to_string();
-                    let id5 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"client-jung-sunok").to_string();
-                    view! {
-                        <ClientCard id=id1 name="김복순" age=82 care_level="3등급" services="방문요양" next_visit="오늘 14:00" />
-                        <ClientCard id=id2 name="이순자" age=78 care_level="2등급" services="방문요양, 방문목욕" next_visit="오늘 09:00" />
-                        <ClientCard id=id3 name="박영자" age=85 care_level="4등급" services="방문목욕" next_visit="내일 11:00" />
-                        <ClientCard id=id4 name="최영희" age=76 care_level="3등급" services="방문간호" next_visit="오늘 16:30" />
-                        <ClientCard id=id5 name="정순옥" age=88 care_level="1등급" services="방문요양, 방문간호" next_visit="수요일 10:00" />
+            <Suspense fallback=move || view! {
+                <div class="animate-pulse bg-gray-200 rounded-xl h-20" />
+            }>
+                {move || Suspend::new(async move {
+                    let query = search.get();
+                    match clients.await {
+                        Ok(resp) if resp.success => {
+                            let items = resp.data.unwrap_or_default();
+                            let filtered: Vec<PersonProfile> = if query.is_empty() {
+                                items
+                            } else {
+                                items.into_iter().filter(|p| {
+                                    p.korean_name.as_deref().unwrap_or("").contains(&query)
+                                }).collect()
+                            };
+                            if filtered.is_empty() {
+                                view! {
+                                    <p class="text-center text-gray-500 py-8">"담당 고객이 없습니다."</p>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <div class="space-y-3">
+                                        {filtered.into_iter().map(|profile| {
+                                            let id = profile.id.to_string();
+                                            let name = profile.korean_name.clone().unwrap_or_else(|| "이름 없음".to_string());
+                                            let age: u32 = profile.date_of_birth.map(|dob| {
+                                                let now = chrono::Utc::now();
+                                                (now.year() - dob.year()) as u32
+                                            }).unwrap_or(0);
+                                            view! {
+                                                <ClientCard
+                                                    id=id
+                                                    name=name
+                                                    age=age
+                                                    care_level="미확인".to_string()
+                                                    services="방문요양".to_string()
+                                                    next_visit="일정 없음".to_string()
+                                                />
+                                            }
+                                        }).collect_view()}
+                                    </div>
+                                }.into_any()
+                            }
+                        }
+                        _ => view! {
+                            <p class="text-center text-gray-500 py-8">"데이터를 불러올 수 없습니다."</p>
+                        }.into_any(),
                     }
-                }
-            </div>
+                })}
+            </Suspense>
         </div>
     }
 }

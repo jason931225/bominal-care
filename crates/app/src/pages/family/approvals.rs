@@ -1,5 +1,4 @@
 use leptos::prelude::*;
-use uuid::Uuid;
 
 // =============================================================================
 // Approval pages — list and detail
@@ -8,6 +7,12 @@ use uuid::Uuid;
 /// Lists pending approval items requiring family member decisions.
 #[component]
 pub fn ApprovalsListPage() -> impl IntoView {
+    let data = LocalResource::new(|| {
+        crate::api::get::<Vec<bominal_types::ApprovalStep>>(
+            "/api/care-plans?pending_approval=true",
+        )
+    });
+
     view! {
         <div class="p-6 space-y-8">
             <div>
@@ -16,32 +21,44 @@ pub fn ApprovalsListPage() -> impl IntoView {
             </div>
 
             <div class="space-y-3">
-                {
-                    let id1 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"approval-care-plan-change").to_string();
-                    let id2 = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"approval-medication-change").to_string();
-                    let href1 = format!("/family/approvals/{id1}");
-                    let href2 = format!("/family/approvals/{id2}");
-                    view! {
-                        <a href=href1 class="block bg-surface-card rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
-                            <div class="flex justify-between items-center">
-                                <div>
-                                    <p class="font-medium text-txt-primary">"케어 플랜 변경 승인"</p>
-                                    <p class="text-sm text-txt-tertiary">"방문 시간 변경 요청"</p>
-                                </div>
-                                <span class="text-xs px-2 py-1 rounded-full bg-warning-light text-warning">"대기 중"</span>
-                            </div>
-                        </a>
-                        <a href=href2 class="block bg-surface-card rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
-                            <div class="flex justify-between items-center">
-                                <div>
-                                    <p class="font-medium text-txt-primary">"약물 변경 승인"</p>
-                                    <p class="text-sm text-txt-tertiary">"처방 변경에 대한 동의 필요"</p>
-                                </div>
-                                <span class="text-xs px-2 py-1 rounded-full bg-warning-light text-warning">"대기 중"</span>
-                            </div>
-                        </a>
-                    }
-                }
+                <Suspense fallback=move || view! { <div class="animate-pulse bg-gray-200 rounded-xl h-20" /> }>
+                    {move || Suspend::new(async move {
+                        match data.await {
+                            Ok(resp) if resp.success => {
+                                let items = resp.data.unwrap_or_default();
+                                if items.is_empty() {
+                                    view! {
+                                        <p class="text-center text-txt-secondary py-8">"데이터가 없습니다."</p>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <div class="space-y-3">
+                                            {items.into_iter().map(|item| {
+                                                let href = format!("/family/approvals/{}", item.id);
+                                                let step_name = item.step_name.clone();
+                                                let status = item.status.clone();
+                                                view! {
+                                                    <a href=href class="block bg-surface-card rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+                                                        <div class="flex justify-between items-center">
+                                                            <div>
+                                                                <p class="font-medium text-txt-primary">{step_name}</p>
+                                                                <p class="text-sm text-txt-tertiary">{status}</p>
+                                                            </div>
+                                                            <span class="text-xs px-2 py-1 rounded-full bg-warning-light text-warning">"대기 중"</span>
+                                                        </div>
+                                                    </a>
+                                                }
+                                            }).collect::<Vec<_>>()}
+                                        </div>
+                                    }.into_any()
+                                }
+                            }
+                            _ => view! {
+                                <p class="text-center text-txt-secondary py-8">"데이터를 불러올 수 없습니다."</p>
+                            }.into_any(),
+                        }
+                    })}
+                </Suspense>
             </div>
         </div>
     }

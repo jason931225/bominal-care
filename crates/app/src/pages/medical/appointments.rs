@@ -21,11 +21,50 @@ pub fn AppointmentsPage() -> impl IntoView {
     let (purpose, set_purpose) = signal(String::new());
     let (notes, set_notes) = signal(String::new());
     let (submitting, set_submitting) = signal(false);
+    let error_msg = RwSignal::new(None::<String>);
+    let success_msg = RwSignal::new(None::<String>);
+
+    // Upcoming appointments from the API
+    let upcoming = LocalResource::new(|| {
+        crate::api::get::<Vec<serde_json::Value>>("/api/appointments?upcoming=true")
+    });
 
     let on_submit = move |_| {
+        let institution_val = institution.get();
+        let date_val = date.get();
+        let time_val = time.get();
+        let purpose_val = purpose.get();
+        let notes_val = notes.get();
+
+        if institution_val.is_empty() || date_val.is_empty() || time_val.is_empty() {
+            error_msg.set(Some(t("medical.appointments.required_fields").to_string()));
+            return;
+        }
+
+        error_msg.set(None);
+        success_msg.set(None);
         set_submitting.set(true);
+
         leptos::task::spawn_local(async move {
-            // Placeholder: submit appointment booking to API
+            let appointment_date = format!("{}T{}:00Z", date_val, time_val);
+            let body = serde_json::json!({
+                "institution_name": institution_val,
+                "appointment_date": appointment_date,
+                "purpose": if purpose_val.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(purpose_val) },
+                "notes": if notes_val.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(notes_val) },
+            });
+            match crate::api::post::<serde_json::Value, _>("/api/appointments", &body).await {
+                Ok(resp) if resp.success => {
+                    success_msg.set(Some(t("medical.appointments.success").to_string()));
+                    set_institution.set(String::new());
+                    set_date.set(String::new());
+                    set_time.set(String::new());
+                    set_purpose.set(String::new());
+                    set_notes.set(String::new());
+                }
+                Ok(resp) => error_msg.set(resp.error.or_else(|| Some(t("common.error_generic").to_string()))),
+                Err(e) => error_msg.set(Some(e)),
+            }
             set_submitting.set(false);
         });
     };
@@ -36,6 +75,14 @@ pub fn AppointmentsPage() -> impl IntoView {
                 title=t("medical.appointments.title").to_string()
                 subtitle=t("medical.appointments.subtitle").to_string()
             />
+
+            // Success / error feedback
+            {move || error_msg.get().map(|msg| view! {
+                <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{msg}</div>
+            })}
+            {move || success_msg.get().map(|msg| view! {
+                <div class="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-700">{msg}</div>
+            })}
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 // Booking form
@@ -103,7 +150,53 @@ pub fn AppointmentsPage() -> impl IntoView {
                 // Upcoming appointments
                 <div class="bg-surface-card rounded-2xl p-5 shadow-sm space-y-4">
                     <h2 class="font-semibold text-txt-primary">{t("medical.appointments.upcoming")}</h2>
-                    <EmptyState message=t("medical.appointments.no_upcoming").to_string() />
+                    <Suspense fallback=move || view! {
+                        <div class="animate-pulse bg-gray-200 rounded-xl h-20" />
+                    }>
+                        {move || Suspend::new(async move {
+                            match upcoming.await {
+                                Ok(resp) if resp.success => {
+                                    let items = resp.data.unwrap_or_default();
+                                    if items.is_empty() {
+                                        view! {
+                                            <EmptyState message=t("medical.appointments.no_upcoming").to_string() />
+                                        }.into_any()
+                                    } else {
+                                        view! {
+                                            <ul class="space-y-3">
+                                                {items.into_iter().map(|item| {
+                                                    let institution_name = item.get("institution_name")
+                                                        .and_then(|v| v.as_str())
+                                                        .unwrap_or("-")
+                                                        .to_string();
+                                                    let appt_date = item.get("appointment_date")
+                                                        .and_then(|v| v.as_str())
+                                                        .unwrap_or("-")
+                                                        .to_string();
+                                                    let appt_purpose = item.get("purpose")
+                                                        .and_then(|v| v.as_str())
+                                                        .unwrap_or("")
+                                                        .to_string();
+                                                    view! {
+                                                        <li class="border border-gray-100 rounded-xl p-3 space-y-1">
+                                                            <p class="text-sm font-medium text-txt-primary">{institution_name}</p>
+                                                            <p class="text-xs text-txt-tertiary">{appt_date}</p>
+                                                            {(!appt_purpose.is_empty()).then(|| view! {
+                                                                <p class="text-xs text-txt-secondary">{appt_purpose}</p>
+                                                            })}
+                                                        </li>
+                                                    }
+                                                }).collect_view()}
+                                            </ul>
+                                        }.into_any()
+                                    }
+                                }
+                                _ => view! {
+                                    <p class="text-center text-gray-500 py-8">{t("medical.appointments.no_upcoming")}</p>
+                                }.into_any(),
+                            }
+                        })}
+                    </Suspense>
                 </div>
             </div>
         </div>
