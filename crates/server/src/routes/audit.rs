@@ -47,7 +47,7 @@ async fn list_audit_logs(
             tracing::error!("DB error listing audit logs: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }

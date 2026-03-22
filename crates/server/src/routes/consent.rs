@@ -44,7 +44,7 @@ async fn list_consents(
             tracing::error!("DB error listing consents: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -74,7 +74,7 @@ async fn grant_consent(
             tracing::error!("DB error granting consent: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -96,8 +96,8 @@ async fn revoke_consent(
         Err(e) => {
             tracing::error!("DB error revoking consent: {e}");
             let (status, msg) = match e {
-                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "Consent not found"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "동의를 찾을 수 없습니다"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "서버 오류"),
             };
             (status, Json(ApiResponse::<()>::error(msg))).into_response()
         }
@@ -112,13 +112,13 @@ async fn resolve_person_id(
         Ok(Some(p)) => Ok(p.id),
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
-            Json(ApiResponse::<()>::error("Profile not found")),
+            Json(ApiResponse::<()>::error("프로필을 찾을 수 없습니다")),
         )),
         Err(e) => {
             tracing::error!("DB error resolving person_id: {e}");
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             ))
         }
     }

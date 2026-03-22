@@ -44,7 +44,7 @@ pub async fn demo_login(
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({
                     "success": false,
-                    "error": "User not found or inactive",
+                    "error": "사용자를 찾을 수 없거나 비활성 상태입니다",
                 })),
             );
         }

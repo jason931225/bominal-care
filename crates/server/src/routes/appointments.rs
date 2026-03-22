@@ -57,7 +57,7 @@ async fn list_appointments(
             tracing::error!("DB error listing appointments: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -110,7 +110,7 @@ async fn create_appointment(
             tracing::error!("DB error creating appointment: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -131,14 +131,14 @@ async fn get_appointment(
         Ok(Some(data)) => Json(ApiResponse::success(data)).into_response(),
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(ApiResponse::<()>::error("Appointment not found")),
+            Json(ApiResponse::<()>::error("예약을 찾을 수 없습니다")),
         )
             .into_response(),
         Err(e) => {
             tracing::error!("DB error fetching appointment: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -190,8 +190,8 @@ async fn update_appointment(
         Err(e) => {
             tracing::error!("DB error updating appointment: {e}");
             let (status, msg) = match e {
-                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "Appointment not found"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "예약을 찾을 수 없습니다"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "서버 오류"),
             };
             (
                 status,
@@ -236,8 +236,8 @@ async fn delete_appointment(
         Err(e) => {
             tracing::error!("DB error cancelling appointment: {e}");
             let (status, msg) = match e {
-                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "Appointment not found"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "예약을 찾을 수 없습니다"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "서버 오류"),
             };
             (
                 status,
@@ -256,13 +256,13 @@ async fn resolve_person_id(
         Ok(Some(p)) => Ok(p.id),
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
-            Json(ApiResponse::<()>::error("Profile not found")),
+            Json(ApiResponse::<()>::error("프로필을 찾을 수 없습니다")),
         )),
         Err(e) => {
             tracing::error!("DB error resolving person_id: {e}");
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             ))
         }
     }

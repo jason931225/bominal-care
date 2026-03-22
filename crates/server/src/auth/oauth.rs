@@ -134,7 +134,7 @@ pub async fn oauth_start(
         None => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "success": false, "error": "Unknown provider" })),
+                Json(serde_json::json!({ "success": false, "error": "알 수 없는 인증 제공자입니다" })),
             )
                 .into_response();
         }
@@ -191,7 +191,7 @@ pub async fn oauth_callback(
     if stored_csrf.as_deref() != Some(&params.state) {
         return (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "success": false, "error": "Invalid CSRF state" })),
+            Json(serde_json::json!({ "success": false, "error": "잘못된 CSRF 상태입니다" })),
         )
             .into_response();
     }
@@ -201,7 +201,7 @@ pub async fn oauth_callback(
         None => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "success": false, "error": "Unknown provider" })),
+                Json(serde_json::json!({ "success": false, "error": "알 수 없는 인증 제공자입니다" })),
             )
                 .into_response();
         }
@@ -285,7 +285,7 @@ pub async fn oauth_callback(
         None => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "success": false, "error": "Email not provided by OAuth provider" })),
+                Json(serde_json::json!({ "success": false, "error": "OAuth 제공자로부터 이메일을 받지 못했습니다" })),
             )
                 .into_response();
         }

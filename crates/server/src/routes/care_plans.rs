@@ -50,7 +50,7 @@ async fn list_care_plans(
             tracing::error!("DB error listing care plans: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -103,7 +103,7 @@ async fn create_care_plan(
             tracing::error!("DB error creating care plan: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -124,14 +124,14 @@ async fn get_care_plan(
         Ok(Some(data)) => Json(ApiResponse::success(data)).into_response(),
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(ApiResponse::<()>::error("Care plan not found")),
+            Json(ApiResponse::<()>::error("케어플랜을 찾을 수 없습니다")),
         )
             .into_response(),
         Err(e) => {
             tracing::error!("DB error fetching care plan: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -183,8 +183,8 @@ async fn update_care_plan(
         Err(e) => {
             tracing::error!("DB error updating care plan: {e}");
             let (status, msg) = match e {
-                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "Care plan not found"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "케어플랜을 찾을 수 없습니다"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "서버 오류"),
             };
             (
                 status,
@@ -203,13 +203,13 @@ async fn resolve_person_id(
         Ok(Some(p)) => Ok(p.id),
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
-            Json(ApiResponse::<()>::error("Profile not found")),
+            Json(ApiResponse::<()>::error("프로필을 찾을 수 없습니다")),
         )),
         Err(e) => {
             tracing::error!("DB error resolving person_id: {e}");
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             ))
         }
     }

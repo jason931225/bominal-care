@@ -62,7 +62,7 @@ async fn list_applications(
             tracing::error!("DB error listing caregiver applications: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }

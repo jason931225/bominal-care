@@ -48,7 +48,7 @@ async fn list_notifications(
             tracing::error!("DB error listing notifications: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -70,7 +70,7 @@ async fn get_unread_count(
             tracing::error!("DB error fetching unread count: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -101,7 +101,7 @@ async fn create_notification(
             tracing::error!("DB error creating notification: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -123,8 +123,8 @@ async fn mark_as_read(
         Err(e) => {
             tracing::error!("DB error marking notification as read: {e}");
             let (status, msg) = match e {
-                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "Notification not found"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "알림을 찾을 수 없습니다"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "서버 오류"),
             };
             (status, Json(ApiResponse::<()>::error(msg))).into_response()
         }

@@ -32,7 +32,7 @@ pub async fn require_auth(request: Request, next: Next) -> Response {
             Json(serde_json::json!({
                 "success": false,
                 "data": null,
-                "error": "Unauthenticated",
+                "error": "인증이 필요합니다",
             })),
         )
             .into_response();
@@ -61,7 +61,7 @@ pub fn require_role(
                     Json(serde_json::json!({
                         "success": false,
                         "data": null,
-                        "error": "Unauthenticated",
+                        "error": "인증이 필요합니다",
                     })),
                 )
                     .into_response(),

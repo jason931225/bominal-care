@@ -48,7 +48,7 @@ async fn list_entries(
             tracing::error!("DB error listing medical history: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -81,7 +81,7 @@ async fn create_entry(
             tracing::error!("DB error creating medical history entry: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -96,13 +96,13 @@ async fn resolve_person_id(
         Ok(Some(p)) => Ok(p.id),
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
-            Json(ApiResponse::<()>::error("Profile not found")),
+            Json(ApiResponse::<()>::error("프로필을 찾을 수 없습니다")),
         )),
         Err(e) => {
             tracing::error!("DB error resolving person_id: {e}");
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             ))
         }
     }

@@ -106,7 +106,7 @@ pub async fn register_finish(
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
                     "success": false,
-                    "error": "No registration in progress",
+                    "error": "진행 중인 등록이 없습니다",
                 })),
             );
         }
@@ -133,7 +133,7 @@ pub async fn register_finish(
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
                     "success": false,
-                    "error": "Registration session expired",
+                    "error": "등록 세션이 만료되었습니다",
                 })),
             );
         }
@@ -187,7 +187,7 @@ pub async fn login_start(
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
                 "success": false,
-                "error": "No passkeys registered for this user",
+                "error": "등록된 패스키가 없습니다",
             })),
         );
     }
@@ -239,7 +239,7 @@ pub async fn login_finish(
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
                     "success": false,
-                    "error": "No authentication in progress",
+                    "error": "진행 중인 인증이 없습니다",
                 })),
             );
         }
@@ -284,7 +284,7 @@ pub async fn login_finish(
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({
                     "success": false,
-                    "error": "Credential not found",
+                    "error": "인증 정보를 찾을 수 없습니다",
                 })),
             );
         }
@@ -307,7 +307,7 @@ pub async fn login_finish(
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({
                     "success": false,
-                    "error": "User not found or inactive",
+                    "error": "사용자를 찾을 수 없거나 비활성 상태입니다",
                 })),
             );
         }

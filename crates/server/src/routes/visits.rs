@@ -68,7 +68,7 @@ async fn list_visits(
             tracing::error!("DB error listing visits: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -115,8 +115,8 @@ async fn check_in(
         Err(e) => {
             tracing::error!("DB error checking in: {e}");
             let (status, msg) = match e {
-                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "Visit not found"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "방문을 찾을 수 없습니다"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "서버 오류"),
             };
             (status, Json(ApiResponse::<()>::error(msg))).into_response()
         }
@@ -164,8 +164,8 @@ async fn check_out(
         Err(e) => {
             tracing::error!("DB error checking out: {e}");
             let (status, msg) = match e {
-                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "Visit not found"),
-                _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+                sqlx::Error::RowNotFound => (StatusCode::NOT_FOUND, "방문을 찾을 수 없습니다"),
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, "서버 오류"),
             };
             (status, Json(ApiResponse::<()>::error(msg))).into_response()
         }

@@ -34,14 +34,14 @@ async fn get_my_profile(
         Ok(Some(data)) => Json(ApiResponse::success(data)).into_response(),
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(ApiResponse::<()>::error("Profile not found")),
+            Json(ApiResponse::<()>::error("프로필을 찾을 수 없습니다")),
         )
             .into_response(),
         Err(e) => {
             tracing::error!("DB error fetching profile: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
@@ -64,7 +64,7 @@ async fn update_my_profile(
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(ApiResponse::<()>::error("Profile not found")),
+                Json(ApiResponse::<()>::error("프로필을 찾을 수 없습니다")),
             )
                 .into_response();
         }
@@ -72,7 +72,7 @@ async fn update_my_profile(
             tracing::error!("DB error looking up profile: {e}");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response();
         }
@@ -84,7 +84,7 @@ async fn update_my_profile(
             tracing::error!("DB error updating profile: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("Internal server error")),
+                Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()
         }
