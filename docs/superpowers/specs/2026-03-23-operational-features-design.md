@@ -16,13 +16,17 @@ Four interconnected operational features that make the platform usable for real 
 
 ---
 
-## 1. Medication Instructions
+## 1. Medication System Enhancements
 
-### Problem
+Three sub-features: structured instructions, dose tracking, and reminders with tick-off.
 
-Medications table has `dosage` (text) and `frequency` (enum) but no structured field for Korean dosage instructions like "식후 30분", "공복", or "취침 전". This prevents automated reminder timing and proper display.
+### 1A. Structured Instructions
 
-### Schema Change
+#### Problem
+
+No structured field for Korean dosage instructions like "식후 30분", "공복", or "취침 전".
+
+#### Schema
 
 ```sql
 CREATE TYPE instruction_timing AS ENUM (
@@ -39,11 +43,11 @@ ALTER TABLE medications ADD COLUMN instruction_minutes INT CHECK (instruction_mi
 ALTER TABLE medications ADD COLUMN instruction_text TEXT;
 ```
 
-- `instruction_timing` — structured enum driving display and future reminder logic
-- `instruction_minutes` — offset in minutes (e.g., 30 = "식후 30분"). NULL means no specific offset. Only meaningful for BEFORE_MEAL, AFTER_MEAL, BEDTIME. CHECK >= 0.
-- `instruction_text` — free-text for anything the enum doesn't cover (e.g., "자몽주스와 함께 복용 금지")
+- `instruction_timing` — structured enum for display and future reminder logic
+- `instruction_minutes` — offset (e.g., 30 = "식후 30분"). Only meaningful for BEFORE_MEAL, AFTER_MEAL, BEDTIME.
+- `instruction_text` — free-text for edge cases (e.g., "자몽주스와 함께 복용 금지")
 
-### Korean Display Mapping
+#### Korean Display Mapping
 
 | Enum | Korean | With minutes |
 |------|--------|-------------|
@@ -54,23 +58,122 @@ ALTER TABLE medications ADD COLUMN instruction_text TEXT;
 | BEDTIME | 취침 전 | 취침 30분 전 |
 | ANYTIME | 시간 무관 | (minutes ignored) |
 
-### API Changes
+### 1B. Dose Tracking (Remaining Supply)
 
-- `POST /api/medications` — accept `instruction_timing`, `instruction_minutes`, `instruction_text`
-- `PATCH /api/medications/{id}` — accept same fields for updates
-- `GET /api/medications` — return the new fields in response
+#### Problem
+
+Seniors don't know when their medication will run out. No way to track remaining supply or alert when refill is needed.
+
+#### Schema
+
+```sql
+ALTER TABLE medications ADD COLUMN total_quantity INT CHECK (total_quantity > 0);
+ALTER TABLE medications ADD COLUMN doses_per_intake INT NOT NULL DEFAULT 1;
+```
+
+- `total_quantity` — total units dispensed (e.g., 60 tablets for a 30-day supply of twice-daily)
+- `doses_per_intake` — how many units per dose (usually 1, but some meds require 2 tablets per intake)
+
+#### Computed Values (not stored, calculated at query time)
+
+```sql
+-- Doses taken so far
+SELECT COUNT(*) FROM medication_events
+WHERE medication_id = $1 AND status = 'TAKEN';
+
+-- Remaining quantity
+remaining = total_quantity - (taken_count * doses_per_intake)
+
+-- Remaining days (approximate)
+remaining_days = remaining / (frequency_per_day * doses_per_intake)
+```
+
+`frequency_per_day` derived from `MedicationFrequency`:
+| Frequency | Per day |
+|-----------|---------|
+| ONCE_DAILY | 1 |
+| TWICE_DAILY | 2 |
+| THREE_TIMES_DAILY | 3 |
+| FOUR_TIMES_DAILY | 4 |
+| EVERY_OTHER_DAY | 0.5 |
+| WEEKLY | 0.14 |
+| AS_NEEDED | N/A (don't compute) |
+
+#### API
+
+- `GET /api/medications` — response includes `remaining_quantity` and `remaining_days` (computed)
+- `GET /api/medications/{id}` — same
+
+#### Frontend Display
+
+- Medication card: "12일분 남음" badge (green if >7d, yellow if 3-7d, red if ≤3d)
+- Detail page: "총 60정 중 36정 복용 / 24정 남음 (약 12일분)"
+- Alert on dashboard when any medication ≤7 days: "약 보충이 필요합니다" card in warning color
+
+### 1C. Medication Reminders
+
+#### Problem
+
+Medication schedules exist (time_of_day: "08:00") but there's no reminder system. Seniors need configurable in-app reminders.
+
+#### Schema
+
+```sql
+ALTER TABLE medication_schedules ADD COLUMN reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE medication_schedules ADD COLUMN reminder_minutes_before INT NOT NULL DEFAULT 10;
+```
+
+- `reminder_enabled` — senior can toggle reminders per schedule
+- `reminder_minutes_before` — how many minutes before scheduled time to remind (default 10)
+
+#### Reminder Generation
+
+When `GET /api/medications/today` is called (on dashboard load), the backend:
+1. For each schedule where `reminder_enabled = true`
+2. Compute `reminder_time = scheduled_for - reminder_minutes_before`
+3. If `reminder_time` is within the current check window AND no notification already created for this event today
+4. Insert a notification: `{ type: "REMINDER", title: "복약 알림", message: "{약물명} 복용 시간입니다 ({instruction_timing_korean})", link: "/medication-log" }`
+
+This is a lightweight approach — reminder check piggybacks on the dashboard API call. No background scheduler needed for MVP. Future: push notifications via FCM.
+
+#### Frontend
+
+- Medication detail page: toggle per schedule "알림 받기" with minutes selector (5분/10분/15분/30분 전)
+- API: `PATCH /api/medications/{id}/schedules/{schedule_id}` to update reminder settings
+
+### 1D. Tick-Off UX (Enhanced)
+
+#### Problem
+
+Medication tick-off exists on the log page but isn't prominent enough. Seniors should be able to mark medications directly from the dashboard.
+
+#### Frontend Changes
+
+**Dashboard (`senior/mod.rs`):**
+- Each medication card in "오늘의 복약" section gets a "복용 완료" button
+- Button calls `POST /api/medications/events/{id}/status` with `{ "status": "TAKEN" }`
+- After ticking: card shows green check "✅" + time taken, button disappears
+- Summary line above cards: "오늘 3/5 복용 완료" with progress bar
+
+**Medication log page (`medications.rs`):**
+- Already has tick-off — keep as detailed view with time grouping
+
+**Dashboard reload:** After marking, the medication section refetches to update the count.
+
+### API Changes (all medication sub-features)
+
+- `POST /api/medications` — accept `instruction_timing`, `instruction_minutes`, `instruction_text`, `total_quantity`, `doses_per_intake`
+- `PATCH /api/medications/{id}` — accept same fields
+- `GET /api/medications` — return instruction fields + computed `remaining_quantity`, `remaining_days`
+- `GET /api/medications/today` — generate reminder notifications as side-effect, return events
+- `PATCH /api/medications/{id}/schedules/{schedule_id}` — update `reminder_enabled`, `reminder_minutes_before`
 
 ### Types Changes
 
 - Add `InstructionTiming` enum to `crates/types/src/enums.rs`
-- Add fields to `Medication` model in `crates/types/src/lib.rs`
-- Add fields to medication input structs in `crates/types/src/inputs.rs`
-
-### Frontend Changes
-
-- Senior medication cards — show timing label below dosage (e.g., "500mg 정제 · 식후 30분")
-- Medication detail page — show instruction fields
-- Medical portal prescription form — timing dropdown + minutes input + free-text
+- Add instruction + quantity fields to `Medication` model
+- Add reminder fields to `MedicationSchedule` model
+- Add fields to medication input structs
 
 ---
 
@@ -340,8 +443,9 @@ Response (400):
 **New migration file: `0015_operational_features.sql`**
 
 1. `instruction_timing` enum type
-2. Three new columns on `medications` (with CHECK constraint on minutes)
-3. Migrate `availability_slots.start_time`/`end_time` from TEXT to TIME
+2. Five new columns on `medications`: instruction_timing, instruction_minutes (CHECK >= 0), instruction_text, total_quantity (CHECK > 0), doses_per_intake (DEFAULT 1)
+3. Two new columns on `medication_schedules`: reminder_enabled (DEFAULT TRUE), reminder_minutes_before (DEFAULT 10)
+4. Migrate `availability_slots.start_time`/`end_time` from TEXT to TIME
 4. Add `user_id` column to `availability_slots` + backfill from `caregiver_applications`
 5. `availability_exceptions` table
 6. `NEEDS_REASSIGNMENT` value added to `visit_status` enum
@@ -381,7 +485,8 @@ Response (400):
 ### Frontend
 | File | Changes |
 |------|---------|
-| `crates/app/src/pages/senior/medications.rs` | Display instruction timing on cards and detail page |
+| `crates/app/src/pages/senior/mod.rs` | Dashboard: tick-off buttons on medication cards, progress count, low-supply alert |
+| `crates/app/src/pages/senior/medications.rs` | Display instruction timing + remaining doses on cards and detail page, reminder toggle on detail |
 | `crates/app/src/pages/caregiver/profile.rs` | Wire availability settings page with exceptions |
 | `crates/app/src/pages/medical/prescriptions.rs` | Add timing dropdown to prescription form |
 | `crates/app/src/i18n.rs` | Add instruction timing Korean labels |
@@ -390,7 +495,10 @@ Response (400):
 
 ## Verification
 
-1. **Medications:** Create medication with `instruction_timing: "AFTER_MEAL"`, `instruction_minutes: 30`. Verify senior portal shows "식후 30분". Verify minutes CHECK rejects negative values.
+1. **Medication instructions:** Create medication with `instruction_timing: "AFTER_MEAL"`, `instruction_minutes: 30`. Verify senior portal shows "식후 30분". Verify CHECK rejects negative minutes.
+1b. **Dose tracking:** Create medication with `total_quantity: 60`, `doses_per_intake: 1`, frequency `TWICE_DAILY`. Mark 10 events as TAKEN. Verify API returns `remaining_quantity: 50`, `remaining_days: 25`. Verify dashboard shows "25일분 남음".
+1c. **Reminders:** Verify `GET /api/medications/today` creates reminder notifications for upcoming schedules. Toggle reminder off for a schedule. Verify no notification created.
+1d. **Tick-off from dashboard:** Click "복용 완료" on dashboard medication card. Verify event status changes to TAKEN. Verify card updates to show checkmark. Verify count updates "3/5 복용 완료".
 2. **Availability:** Caregiver sets weekly schedule via `PUT /api/availability`. Block a date via `POST /api/availability/exceptions`. Verify `GET` returns both. Verify `DELETE` rejects other user's exception (403).
 3. **Matching:** Create match request with `requested_schedule: [{day: MONDAY, start: "14:00", end: "16:00"}]`. Verify only caregivers with Mon 14-16 availability appear. Verify blocked caregiver excluded. Verify zero-candidate case returns `NO_CANDIDATES` status.
 4. **Scheduling:** `POST /api/visits/schedule` with 4-week Mon/Wed/Fri pattern. Verify visits created. Add caregiver exception on one date. Verify that date shows in `skipped`. Verify invalid inputs return 400.
