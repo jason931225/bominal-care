@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use uuid::Uuid;
 
-use bominal_types::{Medication, MedicationSchedule};
+use bominal_types::{InstructionTiming, Medication, MedicationFrequency, MedicationSchedule};
 use crate::components::data_display::EmptyState;
 use crate::components::layout::PageHeader;
 use super::InfoRow;
@@ -12,6 +12,75 @@ pub(super) struct MedicationWithSchedules {
     pub medication: Medication,
     #[allow(dead_code)]
     pub schedules: Vec<MedicationSchedule>,
+}
+
+/// Format instruction timing as Korean text.
+fn format_instruction_timing(timing: &InstructionTiming, minutes: Option<i32>) -> String {
+    let base = match timing {
+        InstructionTiming::BeforeMeal => "식전",
+        InstructionTiming::WithMeal => "식사 중",
+        InstructionTiming::AfterMeal => "식후",
+        InstructionTiming::EmptyStomach => "공복",
+        InstructionTiming::Bedtime => "취침 전",
+        InstructionTiming::Anytime => "시간 무관",
+    };
+    match minutes {
+        Some(m) if m > 0 => format!("{} {}분", base, m),
+        _ => base.to_string(),
+    }
+}
+
+/// Estimate remaining days from total_quantity, frequency, and doses_per_intake.
+fn estimate_remaining_days(med: &Medication) -> Option<i32> {
+    let total = med.total_quantity?;
+    if total <= 0 {
+        return Some(0);
+    }
+    let doses_per_day = match med.frequency {
+        MedicationFrequency::OnceDaily => 1,
+        MedicationFrequency::TwiceDaily => 2,
+        MedicationFrequency::ThreeTimesDaily => 3,
+        MedicationFrequency::FourTimesDaily => 4,
+        MedicationFrequency::EveryOtherDay => 1, // ~0.5/day, estimate conservatively
+        MedicationFrequency::Weekly => 1,
+        MedicationFrequency::AsNeeded | MedicationFrequency::Custom => return None,
+    };
+    let daily_consumption = doses_per_day * med.doses_per_intake.max(1);
+    if daily_consumption <= 0 {
+        return None;
+    }
+    let days = total / daily_consumption;
+    // EveryOtherDay means roughly double
+    let days = if med.frequency == MedicationFrequency::EveryOtherDay {
+        days * 2
+    } else if med.frequency == MedicationFrequency::Weekly {
+        days * 7
+    } else {
+        days
+    };
+    Some(days)
+}
+
+/// Render a remaining-days badge with appropriate color.
+fn remaining_days_badge(days: i32) -> impl IntoView {
+    let (class, label) = if days <= 3 {
+        ("bg-danger-light text-danger", "약 보충 필요".to_string())
+    } else if days <= 7 {
+        (
+            "bg-warning-light text-warning",
+            format!("{}일분 남음", days),
+        )
+    } else {
+        (
+            "bg-success-light text-success",
+            format!("{}일분 남음", days),
+        )
+    };
+    view! {
+        <span class={format!("inline-block mt-1 text-xs px-2 py-1 rounded-full {}", class)}>
+            {label}
+        </span>
+    }
 }
 
 /// List of active medications with frequency badges.
@@ -42,6 +111,10 @@ pub fn MedicationsListPage() -> impl IntoView {
                                                 "bg-surface-subtle text-txt-tertiary"
                                             };
                                             let active_label = if med.is_active { "복용 중" } else { "중단" };
+                                            let timing_text = med.instruction_timing.as_ref().map(|t| {
+                                                format_instruction_timing(t, med.instruction_minutes)
+                                            });
+                                            let remaining = estimate_remaining_days(&med);
                                             view! {
                                                 <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
                                                     <div class="flex items-center justify-between">
@@ -49,9 +122,15 @@ pub fn MedicationsListPage() -> impl IntoView {
                                                         <span class={format!("text-xs px-2 py-1 rounded-full {active_class}")}>{active_label}</span>
                                                     </div>
                                                     <p class="text-base text-txt-secondary mt-1">{format!("{} · {}", med.dosage, med.form)}</p>
-                                                    <span class="inline-block mt-2 text-xs px-2 py-1 rounded-full bg-primary-light text-primary">
-                                                        {format!("{}", med.frequency)}
-                                                    </span>
+                                                    {timing_text.map(|txt| view! {
+                                                        <p class="text-sm text-txt-tertiary mt-1">{txt}</p>
+                                                    })}
+                                                    <div class="flex items-center gap-2 mt-2">
+                                                        <span class="inline-block text-xs px-2 py-1 rounded-full bg-primary-light text-primary">
+                                                            {format!("{}", med.frequency)}
+                                                        </span>
+                                                        {remaining.map(|days| remaining_days_badge(days))}
+                                                    </div>
                                                 </div>
                                             }
                                         }).collect_view()}
@@ -132,12 +211,56 @@ pub fn MedicationDetailPage(
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.to_string());
 
+                                    // Instruction timing
+                                    let instruction_timing_text = med.get("instruction_timing")
+                                        .and_then(|v| v.as_str())
+                                        .map(|timing_str| {
+                                            let base = match timing_str {
+                                                "BeforeMeal" => "식전",
+                                                "WithMeal" => "식사 중",
+                                                "AfterMeal" => "식후",
+                                                "EmptyStomach" => "공복",
+                                                "Bedtime" => "취침 전",
+                                                "Anytime" => "시간 무관",
+                                                other => other,
+                                            };
+                                            let minutes = med.get("instruction_minutes")
+                                                .and_then(|v| v.as_i64());
+                                            match minutes {
+                                                Some(m) if m > 0 => format!("{} {}분", base, m),
+                                                _ => base.to_string(),
+                                            }
+                                        });
+                                    let instruction_text_val = med.get("instruction_text")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+
+                                    // Remaining quantity
+                                    let total_qty = med.get("total_quantity")
+                                        .and_then(|v| v.as_i64());
+                                    let doses_per_intake = med.get("doses_per_intake")
+                                        .and_then(|v| v.as_i64())
+                                        .unwrap_or(1)
+                                        .max(1);
+                                    let remaining_info = total_qty.map(|qty| {
+                                        format!("총 {}정 (1회 {}정)", qty, doses_per_intake)
+                                    });
+
                                     view! {
                                         <div class="bg-surface-card rounded-2xl p-5 shadow-sm space-y-3">
                                             <h1 class="text-xl font-bold text-txt-primary mb-3">{name}</h1>
                                             <InfoRow label="용량".to_string() value=dosage />
                                             <InfoRow label="제형".to_string() value=form />
                                             <InfoRow label="복용 빈도".to_string() value=frequency />
+                                            {instruction_timing_text.map(|t| view! {
+                                                <InfoRow label="복용 지시".to_string() value=t />
+                                            })}
+                                            {instruction_text_val.map(|t| view! {
+                                                <InfoRow label="추가 지시".to_string() value=t />
+                                            })}
+                                            {remaining_info.map(|r| view! {
+                                                <InfoRow label="잔여 수량".to_string() value=r />
+                                            })}
                                             {prescribed_by.map(|p| view! {
                                                 <InfoRow label="처방의".to_string() value=p />
                                             })}

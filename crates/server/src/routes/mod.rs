@@ -5,6 +5,7 @@
 mod allergies;
 mod appointments;
 mod audit;
+mod availability;
 mod benefits;
 mod care_plans;
 mod care_summary;
@@ -65,6 +66,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/clinical", clinical::router())
         .nest("/lab-results", lab_results::router())
         .nest("/allergies", allergies::router())
+        .nest("/availability", availability::router())
         .nest("/dispensing", dispensing::router())
         .nest("/benefits", benefits::router())
         .nest("/community", community::router())

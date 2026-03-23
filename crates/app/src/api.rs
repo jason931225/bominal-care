@@ -230,6 +230,23 @@ pub async fn patch<T: DeserializeOwned, B: serde::Serialize>(
     resp.json().await.map_err(|e| e.to_string())
 }
 
+/// PUT request with JSON body.
+pub async fn put<T: DeserializeOwned, B: serde::Serialize>(
+    path: &str,
+    body: &B,
+) -> Result<ApiResponse<T>, String> {
+    let url = format!("{}{}", base_url(), path);
+    let resp = gloo_net::http::Request::put(&url)
+        .json(body)
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let resp = check_response(resp).await?;
+    invalidate_cache(path);
+    resp.json().await.map_err(|e| e.to_string())
+}
+
 /// DELETE request.
 pub async fn delete<T: DeserializeOwned>(path: &str) -> Result<ApiResponse<T>, String> {
     let url = format!("{}{}", base_url(), path);

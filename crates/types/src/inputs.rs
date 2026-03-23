@@ -209,6 +209,11 @@ pub struct MedicationInput {
     pub end_date: Option<DateTime<Utc>>,
     pub side_effects: Option<String>,
     pub notes: Option<String>,
+    pub instruction_timing: Option<InstructionTiming>,
+    pub instruction_minutes: Option<i32>,
+    pub instruction_text: Option<String>,
+    pub total_quantity: Option<i32>,
+    pub doses_per_intake: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -226,6 +231,11 @@ pub struct UpdateMedicationInput {
     pub is_active: Option<bool>,
     pub side_effects: Option<String>,
     pub notes: Option<String>,
+    pub instruction_timing: Option<InstructionTiming>,
+    pub instruction_minutes: Option<i32>,
+    pub instruction_text: Option<String>,
+    pub total_quantity: Option<i32>,
+    pub doses_per_intake: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -296,6 +306,7 @@ pub struct MatchRequestInput {
     pub requires_dementia_experience: Option<bool>,
     pub requires_overnight_care: Option<bool>,
     pub additional_notes: Option<String>,
+    pub requested_schedule: Option<Vec<ScheduleSlotInput>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -426,4 +437,31 @@ pub struct ClaimInput {
 
 fn default_krw() -> String {
     "KRW".to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Schedule inputs
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScheduleSlotInput {
+    pub day_of_week: DayOfWeek,
+    pub start_time: String,
+    pub end_time: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct RecurringVisitInput {
+    pub care_plan_id: Uuid,
+    pub caregiver_id: Uuid,
+    pub days: Vec<DayOfWeek>,
+    #[validate(length(min = 1))]
+    pub start_time: String,
+    #[validate(length(min = 1))]
+    pub end_time: String,
+    #[validate(length(min = 1))]
+    pub service_type: String,
+    pub weeks: u32,
+    #[validate(length(min = 1))]
+    pub start_date: String,
 }

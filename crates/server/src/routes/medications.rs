@@ -6,7 +6,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::get,
+    routing::{get, patch},
     Json, Router,
 };
 use uuid::Uuid;
@@ -23,6 +23,7 @@ pub fn router() -> Router<AppState> {
         .route("/", get(list_medications))
         .route("/today", get(get_today_events))
         .route("/{id}", get(get_medication).patch(update_medication))
+        .route("/{med_id}/schedules/{schedule_id}/reminder", patch(update_schedule_reminder))
 }
 
 /// Resolve the person_id from the authenticated user's profile.
@@ -151,6 +152,11 @@ async fn update_medication(
         is_active: input.is_active,
         side_effects: input.side_effects,
         notes: input.notes,
+        instruction_timing: input.instruction_timing,
+        instruction_minutes: input.instruction_minutes,
+        instruction_text: input.instruction_text,
+        total_quantity: input.total_quantity,
+        doses_per_intake: input.doses_per_intake,
         updated_by: None,
     };
 
@@ -183,6 +189,47 @@ async fn update_medication(
             };
             (
                 status,
+                Json(ApiResponse::<()>::error("서버 오류")),
+            )
+                .into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Schedule reminder
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+struct UpdateReminderInput {
+    reminder_enabled: bool,
+    reminder_minutes_before: i32,
+}
+
+/// PATCH /api/medications/:med_id/schedules/:schedule_id/reminder
+async fn update_schedule_reminder(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path((_med_id, schedule_id)): Path<(Uuid, Uuid)>,
+    Json(input): Json<UpdateReminderInput>,
+) -> impl IntoResponse {
+    if let Err(e) = require_permission(&user, Resource::Medication, Action::Update) {
+        return e.into_response();
+    }
+
+    match medication::update_schedule_reminder(
+        &state.pool,
+        schedule_id,
+        input.reminder_enabled,
+        input.reminder_minutes_before,
+    )
+    .await
+    {
+        Ok(schedule) => Json(ApiResponse::success(schedule)).into_response(),
+        Err(e) => {
+            tracing::error!("DB error updating schedule reminder: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ApiResponse::<()>::error("서버 오류")),
             )
                 .into_response()

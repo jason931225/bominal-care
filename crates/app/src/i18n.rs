@@ -389,6 +389,33 @@ static TRANSLATIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::n
     m.insert("pharmacy.fulfillment.subtitle", "조제 완료된 처방전을 관리하세요.");
 
     // =========================================================================
+    // medication — medication instructions and supply
+    // =========================================================================
+    m.insert("medication.timing.before_meal", "식전");
+    m.insert("medication.timing.with_meal", "식사 중");
+    m.insert("medication.timing.after_meal", "식후");
+    m.insert("medication.timing.empty_stomach", "공복");
+    m.insert("medication.timing.bedtime", "취침 전");
+    m.insert("medication.timing.anytime", "시간 무관");
+    m.insert("medication.remaining_days", "일분 남음");
+    m.insert("medication.refill_needed", "약 보충이 필요합니다");
+    m.insert("medication.taken", "복용 완료");
+    m.insert("medication.progress", "복용 현황");
+
+    // =========================================================================
+    // availability — caregiver availability scheduling
+    // =========================================================================
+    m.insert("availability.title", "근무 가능 시간");
+    m.insert("availability.save", "저장");
+    m.insert("availability.saved", "저장되었습니다");
+    m.insert("availability.exceptions", "일정 변경");
+    m.insert("availability.block_date", "날짜 차단");
+    m.insert("availability.reason", "사유");
+    m.insert("availability.delete", "삭제");
+    m.insert("availability.blocked", "차단됨");
+    m.insert("availability.extra", "추가 가능");
+
+    // =========================================================================
     // error — error messages
     // =========================================================================
     m.insert("error.not_found", "페이지를 찾을 수 없습니다");

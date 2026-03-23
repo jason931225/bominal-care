@@ -262,11 +262,28 @@ pub struct AvailabilitySlot {
     pub id: Uuid,
     pub application_id: Uuid,
     pub day_of_week: DayOfWeek,
-    pub start_time: String,
-    pub end_time: String,
+    pub start_time: chrono::NaiveTime,
+    pub end_time: chrono::NaiveTime,
     pub is_active: bool,
+    pub user_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+// ---------------------------------------------------------------------------
+// 13b. AvailabilityException
+// ---------------------------------------------------------------------------
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
+pub struct AvailabilityException {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub exception_date: chrono::NaiveDate,
+    pub is_available: bool,
+    pub start_time: Option<chrono::NaiveTime>,
+    pub end_time: Option<chrono::NaiveTime>,
+    pub reason: Option<String>,
+    pub created_at: DateTime<Utc>,
 }
 
 // ---------------------------------------------------------------------------
@@ -450,6 +467,11 @@ pub struct Medication {
     pub is_active: bool,
     pub side_effects: Option<String>,
     pub notes: Option<String>,
+    pub instruction_timing: Option<InstructionTiming>,
+    pub instruction_minutes: Option<i32>,
+    pub instruction_text: Option<String>,
+    pub total_quantity: Option<i32>,
+    pub doses_per_intake: i32,
     pub approval_status: String,
     pub submitted_by: Option<Uuid>,
     pub approved_by: Option<Uuid>,
@@ -472,6 +494,8 @@ pub struct MedicationSchedule {
     pub time_of_day: String,
     pub day_of_week: Option<DayOfWeek>,
     pub is_active: bool,
+    pub reminder_enabled: bool,
+    pub reminder_minutes_before: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -357,12 +357,95 @@ fn CredentialItem(
 }
 
 // =============================================================================
-// 16. ProfileAvailabilityPage — edit availability slots with save feedback
+// 16. ProfileAvailabilityPage — API-driven weekly availability with exceptions
 // =============================================================================
+
+/// Day label + key used for the weekly grid.
+const DAYS: [(&str, &str); 7] = [
+    ("월요일", "monday"),
+    ("화요일", "tuesday"),
+    ("수요일", "wednesday"),
+    ("목요일", "thursday"),
+    ("금요일", "friday"),
+    ("토요일", "saturday"),
+    ("일요일", "sunday"),
+];
+
+/// Generate time options from 09:00 to 21:00 in 30-min steps.
+fn time_options() -> Vec<String> {
+    let mut opts = Vec::with_capacity(25);
+    let mut hour = 9;
+    let mut min = 0;
+    while hour < 21 || (hour == 21 && min == 0) {
+        opts.push(format!("{:02}:{:02}", hour, min));
+        min += 30;
+        if min >= 60 {
+            min = 0;
+            hour += 1;
+        }
+    }
+    opts
+}
+
+/// Parse a slot from the API JSON for a given day key.
+fn parse_slot_for_day(
+    slots: &[serde_json::Value],
+    day_key: &str,
+) -> (bool, String, String) {
+    for slot in slots {
+        let day = slot.get("day_of_week")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if day.to_lowercase() == day_key {
+            let start = slot.get("start_time")
+                .and_then(|v| v.as_str())
+                .unwrap_or("09:00")
+                .to_string();
+            let end = slot.get("end_time")
+                .and_then(|v| v.as_str())
+                .unwrap_or("18:00")
+                .to_string();
+            return (true, start, end);
+        }
+    }
+    (false, "09:00".to_string(), "18:00".to_string())
+}
 
 #[component]
 pub fn ProfileAvailabilityPage() -> impl IntoView {
     let saved_msg = RwSignal::new(None::<String>);
+    let save_error = RwSignal::new(None::<String>);
+
+    let availability = LocalResource::new(|| {
+        crate::api::get::<Vec<serde_json::Value>>("/api/availability")
+    });
+    let exceptions = LocalResource::new(|| {
+        crate::api::get::<Vec<serde_json::Value>>("/api/availability/exceptions")
+    });
+
+    // Signals for each day: (enabled, start, end)
+    let day_signals: Vec<(&str, &str, RwSignal<bool>, RwSignal<String>, RwSignal<String>)> =
+        DAYS.iter()
+            .map(|(label, key)| {
+                (
+                    *label,
+                    *key,
+                    RwSignal::new(false),
+                    RwSignal::new("09:00".to_string()),
+                    RwSignal::new("18:00".to_string()),
+                )
+            })
+            .collect();
+
+    // Clone signals for populating from API
+    let day_sigs_for_init: Vec<(&str, RwSignal<bool>, RwSignal<String>, RwSignal<String>)> =
+        day_signals.iter().map(|(_, k, e, s, en)| (*k, *e, *s, *en)).collect();
+
+    // Exception form state
+    let show_exception_form = RwSignal::new(false);
+    let exception_date = RwSignal::new(String::new());
+    let exception_reason = RwSignal::new(String::new());
+    let exception_error = RwSignal::new(None::<String>);
 
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-5">
@@ -377,63 +460,303 @@ pub fn ProfileAvailabilityPage() -> impl IntoView {
 
             <p class="text-sm text-gray-600">"근무 가능한 요일과 시간을 설정해주세요."</p>
 
+            // Weekly grid — populated from API
+            <Suspense fallback=move || view! {
+                <div class="animate-pulse space-y-2">
+                    <div class="bg-gray-200 rounded-xl h-16" />
+                    <div class="bg-gray-200 rounded-xl h-16" />
+                    <div class="bg-gray-200 rounded-xl h-16" />
+                </div>
+            }>
+                {
+                    let sigs = day_sigs_for_init.clone();
+                    move || Suspend::new({
+                        let sigs = sigs.clone();
+                        async move {
+                            let slots: Vec<serde_json::Value> = availability.await
+                                .ok()
+                                .and_then(|r| if r.success { r.data } else { None })
+                                .unwrap_or_default();
+                            // Populate signals from API
+                            for (key, enabled_sig, start_sig, end_sig) in &sigs {
+                                let (on, start, end) = parse_slot_for_day(&slots, key);
+                                enabled_sig.set(on);
+                                start_sig.set(start);
+                                end_sig.set(end);
+                            }
+                            view! { <div></div> }
+                        }
+                    })
+                }
+            </Suspense>
+
             <div class="space-y-3">
-                <AvailabilityDayRow day="월요일" start="09:00" end="18:00" enabled=true />
-                <AvailabilityDayRow day="화요일" start="09:00" end="18:00" enabled=true />
-                <AvailabilityDayRow day="수요일" start="09:00" end="18:00" enabled=true />
-                <AvailabilityDayRow day="목요일" start="09:00" end="18:00" enabled=true />
-                <AvailabilityDayRow day="금요일" start="09:00" end="18:00" enabled=true />
-                <AvailabilityDayRow day="토요일" start="09:00" end="13:00" enabled=false />
-                <AvailabilityDayRow day="일요일" start="" end="" enabled=false />
+                {day_signals.iter().map(|(label, _key, enabled, start, end_time)| {
+                    let is_on = *enabled;
+                    let start_val = *start;
+                    let end_val = *end_time;
+                    let label = label.to_string();
+                    let opts = time_options();
+                    let start_opts = opts.clone();
+                    let end_opts = opts;
+                    view! {
+                        <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <button
+                                        class="w-10 h-6 rounded-full transition-colors relative"
+                                        class=("bg-teal-600", move || is_on.get())
+                                        class=("bg-gray-300", move || !is_on.get())
+                                        on:click=move |_| is_on.update(|v| *v = !*v)
+                                    >
+                                        <span
+                                            class="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                                            class=("left-[1.125rem]", move || is_on.get())
+                                            class=("left-0.5", move || !is_on.get())
+                                        />
+                                    </button>
+                                    <span class="font-medium text-gray-900">{label}</span>
+                                </div>
+                                <Show when=move || is_on.get()>
+                                    <div class="flex items-center gap-1 text-sm">
+                                        <select
+                                            class="px-2 py-1 border border-gray-300 rounded-lg text-sm"
+                                            on:change=move |ev| {
+                                                start_val.set(event_target_value(&ev));
+                                            }
+                                        >
+                                            {start_opts.iter().map(|t| {
+                                                let val = t.clone();
+                                                let cmp = t.clone();
+                                                let txt = t.clone();
+                                                view! {
+                                                    <option value={val} selected=move || start_val.get() == cmp>{txt}</option>
+                                                }
+                                            }).collect_view()}
+                                        </select>
+                                        <span class="text-gray-600">"~"</span>
+                                        <select
+                                            class="px-2 py-1 border border-gray-300 rounded-lg text-sm"
+                                            on:change=move |ev| {
+                                                end_val.set(event_target_value(&ev));
+                                            }
+                                        >
+                                            {end_opts.iter().map(|t| {
+                                                let val = t.clone();
+                                                let cmp = t.clone();
+                                                let txt = t.clone();
+                                                view! {
+                                                    <option value={val} selected=move || end_val.get() == cmp>{txt}</option>
+                                                }
+                                            }).collect_view()}
+                                        </select>
+                                    </div>
+                                </Show>
+                            </div>
+                        </div>
+                    }
+                }).collect_view()}
             </div>
 
             // Save feedback
             {move || saved_msg.get().map(|msg| view! {
                 <p class="text-sm text-green-600 text-center">{msg}</p>
             })}
+            {move || save_error.get().map(|msg| view! {
+                <p class="text-sm text-red-600 text-center">{msg}</p>
+            })}
 
             <button
                 class="w-full py-3 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700"
-                on:click=move |_| {
-                    saved_msg.set(Some("저장되었습니다".to_string()));
+                on:click={
+                    let ds = day_signals.iter()
+                        .map(|(_, key, en, st, ed)| (*key, *en, *st, *ed))
+                        .collect::<Vec<_>>();
+                    move |_| {
+                        let slots: Vec<serde_json::Value> = ds.iter()
+                            .filter(|(_, en, _, _)| en.get_untracked())
+                            .map(|(key, _, st, ed)| {
+                                serde_json::json!({
+                                    "day_of_week": key,
+                                    "start_time": st.get_untracked(),
+                                    "end_time": ed.get_untracked()
+                                })
+                            })
+                            .collect();
+                        let body = serde_json::json!({ "slots": slots });
+                        let saved = saved_msg;
+                        let err = save_error;
+                        leptos::task::spawn_local(async move {
+                            match crate::api::put::<serde_json::Value, _>(
+                                "/api/availability", &body
+                            ).await {
+                                Ok(resp) if resp.success => {
+                                    err.set(None);
+                                    saved.set(Some("저장되었습니다".to_string()));
+                                }
+                                Ok(resp) => {
+                                    saved.set(None);
+                                    err.set(resp.error);
+                                }
+                                Err(e) => {
+                                    saved.set(None);
+                                    err.set(Some(e));
+                                }
+                            }
+                        });
+                    }
                 }
             >"저장"</button>
-        </div>
-    }
-}
 
-#[component]
-fn AvailabilityDayRow(
-    #[prop(into)] day: String,
-    #[prop(into)] start: String,
-    #[prop(into)] end: String,
-    enabled: bool,
-) -> impl IntoView {
-    let is_on = RwSignal::new(enabled);
+            // Exceptions section
+            <div class="space-y-3 pt-4 border-t border-gray-200">
+                <h2 class="text-lg font-semibold text-gray-900">"일정 변경"</h2>
 
-    view! {
-        <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
+                <Suspense fallback=move || view! {
+                    <p class="text-sm text-gray-400">"일정 변경 내역을 불러오는 중..."</p>
+                }>
+                    {move || Suspend::new(async move {
+                        match exceptions.await {
+                            Ok(resp) if resp.success => {
+                                let items = resp.data.unwrap_or_default();
+                                if items.is_empty() {
+                                    view! {
+                                        <p class="text-sm text-gray-500">"등록된 일정 변경이 없습니다."</p>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <div class="space-y-2">
+                                            {items.into_iter().map(|exc| {
+                                                let exc_id = exc.get("id")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("")
+                                                    .to_string();
+                                                let date = exc.get("date")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("")
+                                                    .to_string();
+                                                let reason = exc.get("reason")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("")
+                                                    .to_string();
+                                                let is_available = exc.get("is_available")
+                                                    .and_then(|v| v.as_bool())
+                                                    .unwrap_or(false);
+                                                let badge = if is_available {
+                                                    ("bg-green-100 text-green-700", "추가 가능")
+                                                } else {
+                                                    ("bg-red-100 text-red-700", "차단됨")
+                                                };
+                                                let del_id = exc_id.clone();
+                                                view! {
+                                                    <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex items-center justify-between">
+                                                        <div>
+                                                            <div class="flex items-center gap-2">
+                                                                <p class="text-sm font-medium text-gray-900">{date}</p>
+                                                                <span class={format!("text-xs px-2 py-0.5 rounded-full {}", badge.0)}>{badge.1}</span>
+                                                            </div>
+                                                            {if !reason.is_empty() {
+                                                                Some(view! { <p class="text-xs text-gray-500 mt-1">{reason}</p> })
+                                                            } else { None }}
+                                                        </div>
+                                                        <button
+                                                            class="text-sm text-red-600 font-medium hover:text-red-700"
+                                                            on:click=move |_| {
+                                                                let id = del_id.clone();
+                                                                leptos::task::spawn_local(async move {
+                                                                    let _ = crate::api::delete::<serde_json::Value>(
+                                                                        &format!("/api/availability/exceptions/{}", id)
+                                                                    ).await;
+                                                                    if let Some(w) = leptos::web_sys::window() {
+                                                                        let _ = w.location().reload();
+                                                                    }
+                                                                });
+                                                            }
+                                                        >"삭제"</button>
+                                                    </div>
+                                                }
+                                            }).collect_view()}
+                                        </div>
+                                    }.into_any()
+                                }
+                            }
+                            _ => view! {
+                                <p class="text-sm text-gray-500">"일정 변경 내역을 불러올 수 없습니다."</p>
+                            }.into_any(),
+                        }
+                    })}
+                </Suspense>
+
+                // Add exception button / form
+                <Show when=move || !show_exception_form.get()>
                     <button
-                        class="w-10 h-6 rounded-full transition-colors relative"
-                        class=("bg-teal-600", move || is_on.get())
-                        class=("bg-gray-300", move || !is_on.get())
-                        on:click=move |_| is_on.update(|v| *v = !*v)
-                    >
-                        <span
-                            class="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
-                            class=("left-[1.125rem]", move || is_on.get())
-                            class=("left-0.5", move || !is_on.get())
-                        />
-                    </button>
-                    <span class="font-medium text-gray-900">{day}</span>
-                </div>
-                <Show when=move || is_on.get()>
-                    <div class="flex items-center gap-2 text-sm text-gray-600">
-                        <span>{start.clone()}</span>
-                        <span>"~"</span>
-                        <span>{end.clone()}</span>
+                        class="w-full py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200"
+                        on:click=move |_| show_exception_form.set(true)
+                    >"날짜 차단"</button>
+                </Show>
+
+                <Show when=move || show_exception_form.get()>
+                    <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 space-y-3">
+                        <div class="space-y-1">
+                            <label class="text-sm font-medium text-gray-700">"날짜"</label>
+                            <input
+                                type="date"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                on:input=move |ev| exception_date.set(event_target_value(&ev))
+                            />
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-sm font-medium text-gray-700">"사유"</label>
+                            <input
+                                type="text"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                placeholder="사유를 입력하세요"
+                                on:input=move |ev| exception_reason.set(event_target_value(&ev))
+                            />
+                        </div>
+
+                        {move || exception_error.get().map(|e| view! {
+                            <p class="text-sm text-red-600">{e}</p>
+                        })}
+
+                        <div class="flex gap-2">
+                            <button
+                                class="flex-1 py-2 bg-teal-600 text-white text-sm font-medium rounded-xl hover:bg-teal-700"
+                                on:click=move |_| {
+                                    let date_val = exception_date.get_untracked();
+                                    let reason_val = exception_reason.get_untracked();
+                                    if date_val.is_empty() {
+                                        exception_error.set(Some("날짜를 선택해주세요.".to_string()));
+                                        return;
+                                    }
+                                    let body = serde_json::json!({
+                                        "date": date_val,
+                                        "reason": reason_val,
+                                        "is_available": false
+                                    });
+                                    leptos::task::spawn_local(async move {
+                                        match crate::api::post::<serde_json::Value, _>(
+                                            "/api/availability/exceptions", &body
+                                        ).await {
+                                            Ok(resp) if resp.success => {
+                                                if let Some(w) = leptos::web_sys::window() {
+                                                    let _ = w.location().reload();
+                                                }
+                                            }
+                                            Ok(resp) => exception_error.set(resp.error),
+                                            Err(e) => exception_error.set(Some(e)),
+                                        }
+                                    });
+                                }
+                            >"저장"</button>
+                            <button
+                                class="flex-1 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200"
+                                on:click=move |_| {
+                                    show_exception_form.set(false);
+                                    exception_error.set(None);
+                                }
+                            >"취소"</button>
+                        </div>
                     </div>
                 </Show>
             </div>

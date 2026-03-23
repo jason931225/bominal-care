@@ -345,6 +345,7 @@ dependencies = [
  "uuid",
  "validator",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]

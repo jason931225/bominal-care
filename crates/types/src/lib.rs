@@ -13,7 +13,7 @@ pub mod state_machines;
 pub use common::{ApiResponse, DateRange, PaginationMeta, PaginationParams};
 pub use enums::*;
 pub use events::{DomainEvent, DomainEventType, RuleAction, RuleResult};
-pub use inputs::{ObservabilitySignalInput, ReferralInput, SessionUser};
+pub use inputs::{ObservabilitySignalInput, RecurringVisitInput, ReferralInput, ScheduleSlotInput, SessionUser};
 pub use medical::{
     ClinicalEncounter, CreateAllergyInput, CreateEncounterInput, CreateLabResultInput,
     CreatePrescriptionInput, DocumentTransferRequest, GenericSubstitutionRecord, LabResult,

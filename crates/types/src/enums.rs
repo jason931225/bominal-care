@@ -175,6 +175,7 @@ pub enum MatchRequestStatus {
     Selected,
     Booked,
     Fulfilled,
+    NoCandidates,
     Cancelled,
 }
 
@@ -187,6 +188,7 @@ impl std::fmt::Display for MatchRequestStatus {
             Self::Selected => write!(f, "선택완료"),
             Self::Booked => write!(f, "예약완료"),
             Self::Fulfilled => write!(f, "매칭완료"),
+            Self::NoCandidates => write!(f, "후보없음"),
             Self::Cancelled => write!(f, "취소"),
         }
     }
@@ -206,6 +208,7 @@ pub enum VisitStatus {
     InProgress,
     Completed,
     Missed,
+    NeedsReassignment,
     Cancelled,
 }
 
@@ -217,6 +220,7 @@ impl std::fmt::Display for VisitStatus {
             Self::InProgress => write!(f, "진행중"),
             Self::Completed => write!(f, "완료"),
             Self::Missed => write!(f, "미참석"),
+            Self::NeedsReassignment => write!(f, "재배정필요"),
             Self::Cancelled => write!(f, "취소"),
         }
     }
@@ -801,7 +805,37 @@ impl std::fmt::Display for MedicationFrequency {
 }
 
 // ---------------------------------------------------------------------------
-// 26. observation_category
+// 26. instruction_timing
+// ---------------------------------------------------------------------------
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, EnumString)]
+#[cfg_attr(feature = "ssr", derive(sqlx::Type))]
+#[cfg_attr(feature = "ssr", sqlx(type_name = "instruction_timing", rename_all = "SCREAMING_SNAKE_CASE"))]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+pub enum InstructionTiming {
+    BeforeMeal,
+    WithMeal,
+    AfterMeal,
+    EmptyStomach,
+    Bedtime,
+    Anytime,
+}
+
+impl std::fmt::Display for InstructionTiming {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BeforeMeal => write!(f, "식전"),
+            Self::WithMeal => write!(f, "식사 중"),
+            Self::AfterMeal => write!(f, "식후"),
+            Self::EmptyStomach => write!(f, "공복"),
+            Self::Bedtime => write!(f, "취침 전"),
+            Self::Anytime => write!(f, "시간 무관"),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 27. observation_category
 // ---------------------------------------------------------------------------
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, EnumString)]
 #[cfg_attr(feature = "ssr", derive(sqlx::Type))]

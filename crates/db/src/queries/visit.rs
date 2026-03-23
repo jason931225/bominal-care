@@ -3,13 +3,16 @@
 // Ported from packages/db/src/services/visit.service.ts (330 lines)
 // =============================================================================
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, Utc};
+use serde::Serialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use bominal_types::enums::VisitStatus;
+use bominal_types::enums::{DayOfWeek, VisitStatus};
 use bominal_types::models::{CarePlan, CaregiverApplication, Visit};
 use bominal_types::state_machines::visit_machine;
+
+use super::availability_slot;
 
 // ---------------------------------------------------------------------------
 // Input structs
@@ -348,7 +351,7 @@ pub async fn get_upcoming_visits(
     sqlx::query_as::<_, Visit>(
         "SELECT * FROM visits
          WHERE caregiver_id = $1
-           AND status IN ('SCHEDULED', 'CAREGIVER_ACKNOWLEDGED')
+           AND status IN ('SCHEDULED', 'CAREGIVER_ACKNOWLEDGED', 'NEEDS_REASSIGNMENT')
            AND scheduled_start >= $2
          ORDER BY scheduled_start ASC
          LIMIT $3",
@@ -358,4 +361,210 @@ pub async fn get_upcoming_visits(
     .bind(limit)
     .fetch_all(pool)
     .await
+}
+
+// ---------------------------------------------------------------------------
+// Recurring visit generation
+// ---------------------------------------------------------------------------
+
+/// Pattern for generating recurring visits over multiple weeks.
+pub struct RecurringPattern {
+    pub days: Vec<DayOfWeek>,
+    pub start_time: NaiveTime,
+    pub end_time: NaiveTime,
+    pub service_type: String,
+    pub weeks: u32,
+    pub start_date: NaiveDate,
+}
+
+/// A date that was skipped during recurring generation, with a reason.
+#[derive(Debug, Clone, Serialize)]
+pub struct SkippedDate {
+    pub date: NaiveDate,
+    pub reason: String,
+}
+
+/// Result of bulk recurring visit generation.
+#[derive(Debug, Clone)]
+pub struct ScheduleResult {
+    pub created: Vec<Visit>,
+    pub skipped: Vec<SkippedDate>,
+}
+
+/// Convert a `DayOfWeek` enum to its `chrono::Weekday` equivalent.
+fn to_chrono_weekday(day: DayOfWeek) -> chrono::Weekday {
+    match day {
+        DayOfWeek::Monday => chrono::Weekday::Mon,
+        DayOfWeek::Tuesday => chrono::Weekday::Tue,
+        DayOfWeek::Wednesday => chrono::Weekday::Wed,
+        DayOfWeek::Thursday => chrono::Weekday::Thu,
+        DayOfWeek::Friday => chrono::Weekday::Fri,
+        DayOfWeek::Saturday => chrono::Weekday::Sat,
+        DayOfWeek::Sunday => chrono::Weekday::Sun,
+    }
+}
+
+/// Generate recurring visits for a caregiver over multiple weeks.
+///
+/// Iterates day-by-day from `pattern.start_date` for `pattern.weeks * 7` days.
+/// For each date whose weekday is in `pattern.days`, checks availability and
+/// existing visit conflicts, then inserts a visit or records a skip.
+pub async fn generate_recurring_visits(
+    pool: &PgPool,
+    care_plan_id: Uuid,
+    caregiver_id: Uuid,
+    pattern: &RecurringPattern,
+) -> Result<ScheduleResult, sqlx::Error> {
+    // Validate inputs
+    if pattern.end_time <= pattern.start_time {
+        return Err(sqlx::Error::Protocol(
+            "종료 시간은 시작 시간 이후여야 합니다".to_string(),
+        ));
+    }
+    if pattern.weeks == 0 || pattern.weeks > 52 {
+        return Err(sqlx::Error::Protocol(
+            "주 수는 1~52 사이여야 합니다".to_string(),
+        ));
+    }
+    if pattern.days.is_empty() {
+        return Err(sqlx::Error::Protocol(
+            "근무 요일을 선택하세요".to_string(),
+        ));
+    }
+
+    // Collect requested weekdays for fast lookup
+    let requested_weekdays: std::collections::HashSet<chrono::Weekday> = pattern
+        .days
+        .iter()
+        .map(|d| to_chrono_weekday(*d))
+        .collect();
+
+    let total_days = (pattern.weeks * 7) as i64;
+    let mut created = Vec::new();
+    let mut skipped = Vec::new();
+
+    let mut tx = pool.begin().await?;
+
+    for day_offset in 0..total_days {
+        let date = pattern.start_date + Duration::days(day_offset);
+        if !requested_weekdays.contains(&date.weekday()) {
+            continue;
+        }
+
+        // Check caregiver availability (weekly slots + exceptions)
+        let available = availability_slot::check_availability(
+            pool,
+            caregiver_id,
+            date,
+            pattern.start_time,
+            pattern.end_time,
+        )
+        .await?;
+
+        if !available {
+            skipped.push(SkippedDate {
+                date,
+                reason: "요양보호사 일정 차단".to_string(),
+            });
+            continue;
+        }
+
+        // Build scheduled_start / scheduled_end as UTC DateTime
+        let scheduled_start = date
+            .and_time(pattern.start_time)
+            .and_utc();
+        let scheduled_end = date
+            .and_time(pattern.end_time)
+            .and_utc();
+
+        // Check for existing visit conflict
+        let (conflict_count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM visits \
+             WHERE caregiver_id = $1 \
+               AND scheduled_start < $2 \
+               AND scheduled_end > $3 \
+               AND status NOT IN ('CANCELLED', 'MISSED')",
+        )
+        .bind(caregiver_id)
+        .bind(scheduled_end)
+        .bind(scheduled_start)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if conflict_count > 0 {
+            skipped.push(SkippedDate {
+                date,
+                reason: "다른 방문 일정과 겹침".to_string(),
+            });
+            continue;
+        }
+
+        // Insert the visit
+        let visit_id = Uuid::new_v4();
+        let now = Utc::now();
+        let tasks_json = serde_json::json!({ "service_type": pattern.service_type });
+
+        let visit = sqlx::query_as::<_, Visit>(
+            "INSERT INTO visits (
+               id, care_plan_id, caregiver_id, status, scheduled_start, scheduled_end,
+               tasks, created_at, updated_at
+             ) VALUES ($1, $2, $3, 'SCHEDULED', $4, $5, $6, $7, $7)
+             RETURNING *",
+        )
+        .bind(visit_id)
+        .bind(care_plan_id)
+        .bind(caregiver_id)
+        .bind(scheduled_start)
+        .bind(scheduled_end)
+        .bind(tasks_json)
+        .bind(now)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        created.push(visit);
+    }
+
+    tx.commit().await?;
+
+    Ok(ScheduleResult { created, skipped })
+}
+
+// ---------------------------------------------------------------------------
+// mark_needs_reassignment
+// ---------------------------------------------------------------------------
+
+/// Mark all scheduled/acknowledged visits for a caregiver on a specific date
+/// as NEEDS_REASSIGNMENT. Uses row-level locks to prevent races.
+pub async fn mark_needs_reassignment(
+    pool: &PgPool,
+    caregiver_id: Uuid,
+    date: NaiveDate,
+) -> Result<Vec<Visit>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    // Find affected visits with row lock
+    let visits = sqlx::query_as::<_, Visit>(
+        "SELECT * FROM visits \
+         WHERE caregiver_id = $1 \
+           AND scheduled_start::DATE = $2 \
+           AND status IN ('SCHEDULED', 'CAREGIVER_ACKNOWLEDGED') \
+         FOR UPDATE",
+    )
+    .bind(caregiver_id)
+    .bind(date)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    for visit in &visits {
+        sqlx::query(
+            "UPDATE visits SET status = 'NEEDS_REASSIGNMENT', updated_at = NOW() WHERE id = $1",
+        )
+        .bind(visit.id)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+
+    Ok(visits)
 }

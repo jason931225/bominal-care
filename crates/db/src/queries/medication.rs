@@ -7,7 +7,7 @@ use chrono::{DateTime, Datelike, NaiveDate, NaiveTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use bominal_types::enums::{DayOfWeek, MedicationEventStatus, MedicationFrequency};
+use bominal_types::enums::{DayOfWeek, InstructionTiming, MedicationEventStatus, MedicationFrequency};
 use bominal_types::models::{Medication, MedicationEvent, MedicationSchedule};
 use bominal_types::state_machines::medication_event_machine;
 
@@ -28,6 +28,11 @@ pub struct CreateMedicationData {
     pub end_date: Option<DateTime<Utc>>,
     pub side_effects: Option<String>,
     pub notes: Option<String>,
+    pub instruction_timing: Option<InstructionTiming>,
+    pub instruction_minutes: Option<i32>,
+    pub instruction_text: Option<String>,
+    pub total_quantity: Option<i32>,
+    pub doses_per_intake: Option<i32>,
     pub created_by: Option<Uuid>,
 }
 
@@ -44,6 +49,11 @@ pub struct UpdateMedicationData {
     pub is_active: Option<bool>,
     pub side_effects: Option<String>,
     pub notes: Option<String>,
+    pub instruction_timing: Option<InstructionTiming>,
+    pub instruction_minutes: Option<i32>,
+    pub instruction_text: Option<String>,
+    pub total_quantity: Option<i32>,
+    pub doses_per_intake: Option<i32>,
     pub updated_by: Option<Uuid>,
 }
 
@@ -104,8 +114,11 @@ pub async fn create_medication(
         "INSERT INTO medications (
            id, person_id, name, dosage, form, frequency,
            prescribed_by, prescribed_at, start_date, end_date,
-           is_active, side_effects, notes, created_by, created_at, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11, $12, $13, $14, $14)
+           is_active, side_effects, notes,
+           instruction_timing, instruction_minutes, instruction_text,
+           total_quantity, doses_per_intake,
+           created_by, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11, $12, $13, $14, $15, $16, $17, $18, $19, $19)
          RETURNING *",
     )
     .bind(id)
@@ -120,6 +133,11 @@ pub async fn create_medication(
     .bind(data.end_date)
     .bind(&data.side_effects)
     .bind(&data.notes)
+    .bind(data.instruction_timing)
+    .bind(data.instruction_minutes)
+    .bind(&data.instruction_text)
+    .bind(data.total_quantity)
+    .bind(data.doses_per_intake.unwrap_or(1))
     .bind(data.created_by)
     .bind(now)
     .fetch_one(pool)
@@ -183,20 +201,25 @@ pub async fn update_medication(
     // is non-NULL, otherwise the existing column value is preserved.
     sqlx::query_as::<_, Medication>(
         "UPDATE medications SET
-           name          = COALESCE($1,  name),
-           dosage        = COALESCE($2,  dosage),
-           form          = COALESCE($3,  form),
-           frequency     = COALESCE($4,  frequency),
-           prescribed_by = COALESCE($5,  prescribed_by),
-           prescribed_at = COALESCE($6,  prescribed_at),
-           start_date    = COALESCE($7,  start_date),
-           end_date      = COALESCE($8,  end_date),
-           is_active     = COALESCE($9,  is_active),
-           side_effects  = COALESCE($10, side_effects),
-           notes         = COALESCE($11, notes),
-           updated_by    = COALESCE($12, updated_by),
-           updated_at    = $13
-         WHERE id = $14
+           name               = COALESCE($1,  name),
+           dosage             = COALESCE($2,  dosage),
+           form               = COALESCE($3,  form),
+           frequency          = COALESCE($4,  frequency),
+           prescribed_by      = COALESCE($5,  prescribed_by),
+           prescribed_at      = COALESCE($6,  prescribed_at),
+           start_date         = COALESCE($7,  start_date),
+           end_date           = COALESCE($8,  end_date),
+           is_active          = COALESCE($9,  is_active),
+           side_effects       = COALESCE($10, side_effects),
+           notes              = COALESCE($11, notes),
+           instruction_timing = COALESCE($12, instruction_timing),
+           instruction_minutes = COALESCE($13, instruction_minutes),
+           instruction_text   = COALESCE($14, instruction_text),
+           total_quantity     = COALESCE($15, total_quantity),
+           doses_per_intake   = COALESCE($16, doses_per_intake),
+           updated_by         = COALESCE($17, updated_by),
+           updated_at         = $18
+         WHERE id = $19
          RETURNING *",
     )
     .bind(&data.name)
@@ -210,6 +233,11 @@ pub async fn update_medication(
     .bind(data.is_active)
     .bind(&data.side_effects)
     .bind(&data.notes)
+    .bind(data.instruction_timing)
+    .bind(data.instruction_minutes)
+    .bind(&data.instruction_text)
+    .bind(data.total_quantity)
+    .bind(data.doses_per_intake)
     .bind(data.updated_by)
     .bind(now)
     .bind(id)
@@ -517,4 +545,24 @@ pub async fn list_medications(
         .collect();
 
     Ok(result)
+}
+
+// ---------------------------------------------------------------------------
+// update_schedule_reminder
+// ---------------------------------------------------------------------------
+
+pub async fn update_schedule_reminder(
+    pool: &PgPool,
+    schedule_id: Uuid,
+    reminder_enabled: bool,
+    reminder_minutes_before: i32,
+) -> Result<MedicationSchedule, sqlx::Error> {
+    sqlx::query_as::<_, MedicationSchedule>(
+        "UPDATE medication_schedules SET reminder_enabled = $1, reminder_minutes_before = $2, updated_at = NOW() WHERE id = $3 RETURNING *"
+    )
+    .bind(reminder_enabled)
+    .bind(reminder_minutes_before)
+    .bind(schedule_id)
+    .fetch_one(pool)
+    .await
 }

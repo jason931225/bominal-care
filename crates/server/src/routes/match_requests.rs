@@ -74,17 +74,50 @@ async fn create_match_request(
         requires_dementia_experience: input.requires_dementia_experience.unwrap_or(false),
         requires_overnight_care: input.requires_overnight_care.unwrap_or(false),
         additional_notes: input.additional_notes,
+        schedule: input.requested_schedule.unwrap_or_default(),
     };
 
-    match match_request::create_match_request(&state.pool, &data).await {
-        Ok(created) => (StatusCode::CREATED, Json(ApiResponse::success(created))).into_response(),
+    let created = match match_request::create_match_request(&state.pool, &data).await {
+        Ok(mr) => mr,
         Err(e) => {
             tracing::error!("DB error creating match request: {e}");
-            (
+            return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ApiResponse::<()>::error("서버 오류")),
             )
-                .into_response()
+                .into_response();
+        }
+    };
+
+    // Auto-run matching after creation
+    let match_request_id = created.id;
+    match match_request::search_candidates(&state.pool, match_request_id).await {
+        Ok(recommendations) => {
+            // Re-fetch the match request with its final status
+            match match_request::get_match_request(&state.pool, match_request_id).await {
+                Ok(Some(result)) => {
+                    (StatusCode::CREATED, Json(ApiResponse::success(result))).into_response()
+                }
+                Ok(None) => {
+                    // Shouldn't happen — we just created it
+                    (StatusCode::CREATED, Json(ApiResponse::success(serde_json::json!({
+                        "match_request": created,
+                        "recommendations": recommendations,
+                    })))).into_response()
+                }
+                Err(e) => {
+                    tracing::error!("DB error fetching match request after search: {e}");
+                    (StatusCode::CREATED, Json(ApiResponse::success(serde_json::json!({
+                        "match_request": created,
+                        "recommendations": recommendations,
+                    })))).into_response()
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Auto-matching failed for match request {match_request_id}: {e}");
+            // Still return the created match request — matching can be retried
+            (StatusCode::CREATED, Json(ApiResponse::success(created))).into_response()
         }
     }
 }

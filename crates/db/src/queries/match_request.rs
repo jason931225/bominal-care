@@ -3,12 +3,13 @@
 // Ported from packages/db/src/services/match.service.ts
 // =============================================================================
 
-use chrono::Utc;
+use chrono::{NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use bominal_types::enums::{Gender, MatchRequestStatus, ServiceCategory};
+use bominal_types::enums::{DayOfWeek, Gender, MatchRequestStatus, ServiceCategory};
+use bominal_types::inputs::ScheduleSlotInput;
 use bominal_types::models::{CaregiverApplication, MatchRecommendation, MatchRequest};
 use bominal_types::state_machines::match_request_machine;
 
@@ -31,11 +32,20 @@ pub struct CreateMatchRequestData {
     pub requires_dementia_experience: bool,
     pub requires_overnight_care: bool,
     pub additional_notes: Option<String>,
+    pub schedule: Vec<ScheduleSlotInput>,
 }
 
 // ---------------------------------------------------------------------------
 // Scoring types — pure, serializable data
 // ---------------------------------------------------------------------------
+
+/// A single requested schedule slot with day and time range.
+#[derive(Debug, Clone)]
+pub struct RequestedScheduleSlot {
+    pub day_of_week: DayOfWeek,
+    pub start_time: NaiveTime,
+    pub end_time: NaiveTime,
+}
 
 #[derive(Debug, Clone)]
 pub struct ScoringCriteria {
@@ -46,12 +56,14 @@ pub struct ScoringCriteria {
     pub gender_preference: Option<Gender>,
     pub requires_dementia_experience: bool,
     pub requires_overnight_care: bool,
-    pub requested_days: Vec<String>,
+    pub requested_schedule: Vec<RequestedScheduleSlot>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CandidateSlot {
     pub day_of_week: String,
+    pub start_time: NaiveTime,
+    pub end_time: NaiveTime,
 }
 
 #[derive(Debug, Clone)]
@@ -103,13 +115,13 @@ pub struct PaginatedMatchRequests {
     pub total: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct RecommendationWithApplication {
     pub recommendation: MatchRecommendation,
     pub caregiver_application: CaregiverApplication,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MatchRequestWithRecommendations {
     pub match_request: MatchRequest,
     pub recommendations: Vec<RecommendationWithApplication>,
@@ -123,6 +135,8 @@ pub struct MatchRequestWithRecommendations {
 struct SlotRow {
     application_id: Uuid,
     day_of_week: String,
+    start_time: NaiveTime,
+    end_time: NaiveTime,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -136,6 +150,13 @@ struct RegionRow {
     provider_id: Uuid,
     city: String,
     district: String,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct ScheduleRow {
+    day_of_week: DayOfWeek,
+    start_time: NaiveTime,
+    end_time: NaiveTime,
 }
 
 // ---------------------------------------------------------------------------
@@ -167,19 +188,23 @@ pub fn score_candidate(criteria: &ScoringCriteria, candidate: &CandidateData) ->
         };
     }
 
-    // 2. Schedule overlap: 20 points
-    let schedule_overlap = if !criteria.requested_days.is_empty() {
-        let available_days: std::collections::HashSet<&str> = candidate
-            .availability_slots
-            .iter()
-            .map(|s| s.day_of_week.as_str())
-            .collect();
-        let matched = criteria
-            .requested_days
-            .iter()
-            .filter(|d| available_days.contains(d.as_str()))
-            .count();
-        (matched as f64 / criteria.requested_days.len() as f64 * 20.0).round()
+    // 2. Schedule overlap: 20 points (time-based matching)
+    let schedule_overlap = if !criteria.requested_schedule.is_empty() {
+        let covered = criteria.requested_schedule.iter().filter(|req| {
+            candidate.availability_slots.iter().any(|slot| {
+                slot.day_of_week == req.day_of_week.to_string()
+                    && slot.start_time <= req.start_time
+                    && slot.end_time >= req.end_time
+            })
+        }).count();
+        let ratio = covered as f64 / criteria.requested_schedule.len() as f64;
+        if ratio >= 1.0 {
+            20.0   // All slots covered
+        } else if ratio >= 0.8 {
+            10.0   // 80%+ covered
+        } else {
+            0.0    // Disqualify: insufficient coverage
+        }
     } else {
         20.0
     };
@@ -279,7 +304,9 @@ pub async fn create_match_request(
     let id = Uuid::new_v4();
     let now = Utc::now();
 
-    sqlx::query_as::<_, MatchRequest>(
+    let mut tx = pool.begin().await?;
+
+    let match_request = sqlx::query_as::<_, MatchRequest>(
         r#"INSERT INTO match_requests (
              id, senior_id, requested_by, status, service_category,
              region_city, region_district, start_date, end_date,
@@ -304,20 +331,48 @@ pub async fn create_match_request(
     .bind(data.requires_overnight_care)
     .bind(&data.additional_notes)
     .bind(now)
-    .fetch_one(pool)
-    .await
+    .fetch_one(&mut *tx)
+    .await?;
+
+    // Insert schedule rows from input
+    for slot in &data.schedule {
+        let start_time = NaiveTime::parse_from_str(&slot.start_time, "%H:%M")
+            .or_else(|_| NaiveTime::parse_from_str(&slot.start_time, "%H:%M:%S"))
+            .map_err(|e| sqlx::Error::Protocol(format!("잘못된 시작 시간: {e}")))?;
+        let end_time = NaiveTime::parse_from_str(&slot.end_time, "%H:%M")
+            .or_else(|_| NaiveTime::parse_from_str(&slot.end_time, "%H:%M:%S"))
+            .map_err(|e| sqlx::Error::Protocol(format!("잘못된 종료 시간: {e}")))?;
+
+        sqlx::query(
+            "INSERT INTO match_request_schedule (match_request_id, day_of_week, start_time, end_time) \
+             VALUES ($1, $2, $3, $4)",
+        )
+        .bind(id)
+        .bind(slot.day_of_week)
+        .bind(start_time)
+        .bind(end_time)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+
+    Ok(match_request)
 }
 
 pub async fn search_candidates(
     pool: &PgPool,
     match_request_id: Uuid,
 ) -> Result<Vec<MatchRecommendation>, sqlx::Error> {
-    // Fetch the match request
+    // Begin transaction — entire search + scoring + persist is atomic
+    let mut tx = pool.begin().await?;
+
+    // Fetch the match request with row lock
     let match_request = sqlx::query_as::<_, MatchRequest>(
-        "SELECT * FROM match_requests WHERE id = $1",
+        "SELECT * FROM match_requests WHERE id = $1 FOR UPDATE",
     )
     .bind(match_request_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?
     .ok_or(sqlx::Error::RowNotFound)?;
 
@@ -335,7 +390,7 @@ pub async fn search_candidates(
         "UPDATE match_requests SET status = 'SEARCHING', updated_at = NOW() WHERE id = $1",
     )
     .bind(match_request_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     // Fetch approved caregivers
@@ -344,19 +399,19 @@ pub async fn search_candidates(
            FROM caregiver_applications ca
            WHERE ca.status IN ('APPROVED_PRIVATE_PAY', 'APPROVED_UNDER_PROVIDER')"#,
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
-    // Fetch availability slots for approved caregivers
+    // Fetch availability slots for approved caregivers (including times)
     let slots = sqlx::query_as::<_, SlotRow>(
-        r#"SELECT application_id, day_of_week::text AS day_of_week
+        r#"SELECT application_id, day_of_week::text AS day_of_week, start_time, end_time
            FROM availability_slots
            WHERE application_id IN (
              SELECT id FROM caregiver_applications
              WHERE status IN ('APPROVED_PRIVATE_PAY', 'APPROVED_UNDER_PROVIDER')
            ) AND is_active = true"#,
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
     // Fetch service types for approved caregivers
@@ -368,7 +423,7 @@ pub async fn search_candidates(
              WHERE status IN ('APPROVED_PRIVATE_PAY', 'APPROVED_UNDER_PROVIDER')
            ) AND is_active = true"#,
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
     // Fetch service regions via provider organizations
@@ -380,7 +435,7 @@ pub async fn search_candidates(
            WHERE ca.status IN ('APPROVED_PRIVATE_PAY', 'APPROVED_UNDER_PROVIDER')
              AND sr.is_active = true"#,
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
 
     // Group slots by application_id
@@ -392,6 +447,8 @@ pub async fn search_candidates(
             .or_default()
             .push(CandidateSlot {
                 day_of_week: slot.day_of_week.clone(),
+                start_time: slot.start_time,
+                end_time: slot.end_time,
             });
     }
 
@@ -420,6 +477,23 @@ pub async fn search_candidates(
             });
     }
 
+    // Fetch schedule slots for this match request
+    let schedule_rows = sqlx::query_as::<_, ScheduleRow>(
+        "SELECT day_of_week, start_time, end_time FROM match_request_schedule WHERE match_request_id = $1",
+    )
+    .bind(match_request_id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let requested_schedule: Vec<RequestedScheduleSlot> = schedule_rows
+        .into_iter()
+        .map(|r| RequestedScheduleSlot {
+            day_of_week: r.day_of_week,
+            start_time: r.start_time,
+            end_time: r.end_time,
+        })
+        .collect();
+
     // Build scoring criteria from match request
     let criteria = ScoringCriteria {
         region_city: match_request.region_city.clone(),
@@ -429,7 +503,7 @@ pub async fn search_candidates(
         gender_preference: match_request.gender_preference,
         requires_dementia_experience: match_request.requires_dementia_experience,
         requires_overnight_care: match_request.requires_overnight_care,
-        requested_days: Vec::new(),
+        requested_schedule,
     };
 
     // Score each candidate
@@ -470,11 +544,23 @@ pub async fn search_candidates(
     // Delete previous recommendations
     sqlx::query("DELETE FROM match_recommendations WHERE match_request_id = $1")
         .bind(match_request_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
-    // Persist recommendations in a transaction
-    let mut tx = pool.begin().await?;
+    // If no candidates found, transition to NO_CANDIDATES
+    if scored.is_empty() {
+        sqlx::query(
+            "UPDATE match_requests SET status = 'NO_CANDIDATES', updated_at = NOW() WHERE id = $1",
+        )
+        .bind(match_request_id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        return Ok(Vec::new());
+    }
+
+    // Persist recommendations
     let mut recommendations = Vec::new();
 
     for (rank, (app_id, breakdown)) in scored.iter().enumerate() {

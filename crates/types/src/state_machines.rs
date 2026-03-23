@@ -84,7 +84,8 @@ pub fn match_request_machine() -> StateMachine<MatchRequestStatus> {
     use MatchRequestStatus::*;
     let mut m = HashMap::from([
         (Created, vec![Searching]),
-        (Searching, vec![RecommendationsReady]),
+        (Searching, vec![RecommendationsReady, NoCandidates]),
+        (NoCandidates, vec![]),
         (RecommendationsReady, vec![Selected]),
         (Selected, vec![Booked]),
         (Booked, vec![Fulfilled]),
@@ -105,11 +106,12 @@ pub fn match_request_machine() -> StateMachine<MatchRequestStatus> {
 pub fn visit_machine() -> StateMachine<VisitStatus> {
     use VisitStatus::*;
     let mut m = HashMap::from([
-        (Scheduled, vec![CaregiverAcknowledged, Missed]),
-        (CaregiverAcknowledged, vec![InProgress]),
+        (Scheduled, vec![CaregiverAcknowledged, Missed, NeedsReassignment]),
+        (CaregiverAcknowledged, vec![InProgress, NeedsReassignment]),
         (InProgress, vec![Completed]),
         (Completed, vec![]),
         (Missed, vec![]),
+        (NeedsReassignment, vec![Scheduled, Cancelled]),
         (Cancelled, vec![]),
     ]);
     add_escapes(&mut m, &[Cancelled]);
