@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use wasm_bindgen::JsValue;
 
 use crate::i18n::t;
 
@@ -6,6 +7,63 @@ use crate::i18n::t;
 #[derive(serde::Serialize)]
 struct DemoLoginBody {
     email: String,
+}
+
+/// WebAuthn login start request.
+#[derive(serde::Serialize)]
+struct WebAuthnLoginStart {
+    user_id: String,
+}
+
+/// Call the browser's navigator.credentials.get() with WebAuthn options.
+/// Uses wasm_bindgen extern to bridge the async JS call.
+#[wasm_bindgen::prelude::wasm_bindgen(inline_js = r#"
+export async function webauthn_get(optionsJson) {
+    const options = JSON.parse(optionsJson);
+    const publicKey = options.publicKey;
+    function b64ToArr(b64) {
+        const s = b64.replace(/-/g,'+').replace(/_/g,'/');
+        const raw = atob(s);
+        const arr = new Uint8Array(raw.length);
+        for(let i=0; i<raw.length; i++) arr[i]=raw.charCodeAt(i);
+        return arr.buffer;
+    }
+    function arrToB64(buf) {
+        const arr = new Uint8Array(buf);
+        let s = '';
+        for(let i=0; i<arr.length; i++) s+=String.fromCharCode(arr[i]);
+        return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+    }
+    publicKey.challenge = b64ToArr(publicKey.challenge);
+    if(publicKey.allowCredentials) {
+        publicKey.allowCredentials = publicKey.allowCredentials.map(c => ({
+            ...c, id: b64ToArr(c.id)
+        }));
+    }
+    const cred = await navigator.credentials.get({publicKey});
+    return JSON.stringify({
+        id: cred.id,
+        rawId: arrToB64(cred.rawId),
+        type: cred.type,
+        response: {
+            authenticatorData: arrToB64(cred.response.authenticatorData),
+            clientDataJSON: arrToB64(cred.response.clientDataJSON),
+            signature: arrToB64(cred.response.signature),
+            userHandle: cred.response.userHandle ? arrToB64(cred.response.userHandle) : null,
+        }
+    });
+}
+"#)]
+extern "C" {
+    #[wasm_bindgen::prelude::wasm_bindgen(catch)]
+    async fn webauthn_get(options_json: &str) -> Result<JsValue, JsValue>;
+}
+
+async fn webauthn_get_credential(options_json: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let json_str = serde_json::to_string(options_json).map_err(|e| format!("직렬화 오류: {e}"))?;
+    let result = webauthn_get(&json_str).await.map_err(|e| format!("패스키 인증 실패: {e:?}"))?;
+    let response_str = result.as_string().ok_or("응답 파싱 오류".to_string())?;
+    serde_json::from_str(&response_str).map_err(|e| format!("JSON 파싱 오류: {e}"))
 }
 
 /// Map role selection to demo email.
@@ -43,6 +101,105 @@ pub fn SignInPage() -> impl IntoView {
 
     // Capture auth signal outside spawn_local (reactive context required)
     let auth = crate::use_auth();
+
+    let passkey_error = RwSignal::new(Option::<String>::None);
+    let passkey_loading = RwSignal::new(false);
+
+    let auth_for_passkey = crate::use_auth();
+    let on_passkey_login = move |_| {
+        let role = selected_role.get_untracked();
+        let email = role_to_email(&role).to_string();
+        let redirect = role_to_redirect(&role).to_string();
+
+        passkey_loading.set(true);
+        passkey_error.set(None);
+
+        leptos::task::spawn_local(async move {
+            // Step 1: Look up user_id via demo endpoint info
+            // We use the email to find the user, then do WebAuthn
+            let lookup_body = serde_json::json!({"email": email});
+            let user_id = match crate::api::post::<crate::AuthUser, _>("/api/auth/demo", &lookup_body).await {
+                Ok(resp) if resp.success => {
+                    if let Some(user) = &resp.data {
+                        user.id.to_string()
+                    } else {
+                        passkey_error.set(Some("사용자를 찾을 수 없습니다".to_string()));
+                        passkey_loading.set(false);
+                        return;
+                    }
+                }
+                Ok(resp) => {
+                    passkey_error.set(resp.error);
+                    passkey_loading.set(false);
+                    return;
+                }
+                Err(e) => {
+                    passkey_error.set(Some(e));
+                    passkey_loading.set(false);
+                    return;
+                }
+            };
+
+            // Step 2: Start WebAuthn login
+            let start_body = serde_json::json!({"user_id": user_id});
+            let challenge = match crate::api::post::<serde_json::Value, _>(
+                "/api/auth/webauthn/login/start", &start_body
+            ).await {
+                Ok(resp) if resp.success => {
+                    match resp.data {
+                        Some(d) => d,
+                        None => {
+                            passkey_error.set(Some("인증 데이터를 받지 못했습니다".to_string()));
+                            passkey_loading.set(false);
+                            return;
+                        }
+                    }
+                }
+                Ok(resp) => {
+                    passkey_error.set(Some(resp.error.unwrap_or_else(|| "등록된 패스키가 없습니다. 먼저 데모 로그인 후 설정에서 패스키를 등록하세요.".to_string())));
+                    passkey_loading.set(false);
+                    return;
+                }
+                Err(e) => {
+                    passkey_error.set(Some(e));
+                    passkey_loading.set(false);
+                    return;
+                }
+            };
+
+            // Step 3: Call browser WebAuthn API
+            let credential = match webauthn_get_credential(&challenge).await {
+                Ok(c) => c,
+                Err(e) => {
+                    passkey_error.set(Some(e));
+                    passkey_loading.set(false);
+                    return;
+                }
+            };
+
+            // Step 4: Finish WebAuthn login
+            match crate::api::post::<crate::AuthUser, _>(
+                "/api/auth/webauthn/login/finish", &credential
+            ).await {
+                Ok(resp) if resp.success => {
+                    if let Some(user) = resp.data {
+                        auth_for_passkey.set(Some(user));
+                    }
+                    if let Some(window) = leptos::web_sys::window() {
+                        let _ = window.location().set_href(&redirect);
+                    }
+                }
+                Ok(resp) => {
+                    passkey_error.set(Some(resp.error.unwrap_or_else(|| "패스키 인증에 실패했습니다".to_string())));
+                    passkey_loading.set(false);
+                }
+                Err(e) => {
+                    passkey_error.set(Some(e));
+                    passkey_loading.set(false);
+                }
+            }
+        });
+    };
 
     let on_demo_login = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -95,16 +252,20 @@ pub fn SignInPage() -> impl IntoView {
                 </div>
 
                 <div class="bg-surface-card rounded-3xl shadow-lg p-8 space-y-6">
-                    // Passkey login (disabled — registration required)
+                    // Passkey login
                     <button
-                        class="w-full flex items-center justify-center gap-3 px-4 py-3 bg-primary text-white font-medium rounded-xl opacity-50 cursor-not-allowed transition-all"
-                        disabled=true
+                        class="w-full flex items-center justify-center gap-3 px-4 py-3 bg-primary text-white font-medium rounded-xl hover:bg-primary-hover active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled=move || passkey_loading.get()
+                        on:click=on_passkey_login
                     >
                         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
                         </svg>
-                        {t("auth.signin.passkey")}" (등록 필요)"
+                        {move || if passkey_loading.get() { "인증 중..." } else { t("auth.signin.passkey") }}
                     </button>
+                    {move || passkey_error.get().map(|msg| view! {
+                        <p class="text-sm text-danger bg-danger-light rounded-xl px-3 py-2">{msg}</p>
+                    })}
 
                     // Divider
                     <div class="relative">
