@@ -7,6 +7,7 @@ use bominal_types::ObservabilitySignal;
 
 /// Dashboard summary from /api/observability/dashboard.
 #[derive(Debug, Clone, serde::Deserialize)]
+#[allow(dead_code)]
 struct DashboardSummary {
     total_visits_today: i64,
     total_medications_today: i64,

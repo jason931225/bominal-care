@@ -263,6 +263,20 @@ async fn schedule_visits(
     .await
     {
         Ok(result) => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "visit",
+                input.care_plan_id,
+                "bulk_scheduled",
+                "internal",
+                "care_operations",
+                None, None, None, None, None,
+            )
+            .await;
+
             let skipped_json: Vec<serde_json::Value> = result
                 .skipped
                 .iter()

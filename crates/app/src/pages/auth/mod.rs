@@ -9,12 +9,6 @@ struct DemoLoginBody {
     email: String,
 }
 
-/// WebAuthn login start request.
-#[derive(serde::Serialize)]
-struct WebAuthnLoginStart {
-    user_id: String,
-}
-
 /// Call the browser's navigator.credentials.get() with WebAuthn options.
 /// Uses wasm_bindgen extern to bridge the async JS call.
 #[wasm_bindgen::prelude::wasm_bindgen(inline_js = r#"

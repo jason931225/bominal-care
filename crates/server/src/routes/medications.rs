@@ -225,7 +225,22 @@ async fn update_schedule_reminder(
     )
     .await
     {
-        Ok(schedule) => Json(ApiResponse::success(schedule)).into_response(),
+        Ok(schedule) => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "medication_schedule",
+                schedule_id,
+                "reminder_updated",
+                "internal",
+                "care_operations",
+                None, None, None, None, None,
+            )
+            .await;
+            Json(ApiResponse::success(schedule)).into_response()
+        }
         Err(e) => {
             tracing::error!("DB error updating schedule reminder: {e}");
             (

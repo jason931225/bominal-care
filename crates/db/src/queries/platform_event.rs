@@ -2,7 +2,6 @@
 // Platform Event queries — append-only event spine with hash chain
 // =============================================================================
 
-use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 

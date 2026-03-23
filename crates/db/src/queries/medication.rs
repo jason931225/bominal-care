@@ -78,6 +78,7 @@ pub struct MedicationWithSchedules {
 
 /// Intermediate row for the schedule-join query in `generate_events`.
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 struct ScheduleRow {
     pub sched_id: Uuid,
     pub time_of_day: String,
@@ -86,6 +87,7 @@ struct ScheduleRow {
 
 /// Intermediate row for the event + person_id join in `update_event_status`.
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 struct EventWithPersonId {
     pub id: Uuid,
     pub medication_id: Uuid,

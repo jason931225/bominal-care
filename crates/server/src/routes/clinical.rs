@@ -16,6 +16,7 @@ use crate::{
     middleware::validate::ValidatedJson,
     AppState,
 };
+use bominal_db::queries::platform_event;
 use bominal_types::medical::CreateEncounterInput;
 use bominal_types::rbac::{Action, Resource};
 use bominal_types::ApiResponse;
@@ -58,11 +59,26 @@ async fn create_encounter(
     .fetch_one(&state.pool)
     .await
     {
-        Ok(id) => (
-            StatusCode::CREATED,
-            Json(ApiResponse::success(serde_json::json!({"id": id}))),
-        )
-            .into_response(),
+        Ok(id) => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "clinical_encounter",
+                id,
+                "created",
+                "phi",
+                "care_operations",
+                None, None, None, None, None,
+            )
+            .await;
+            (
+                StatusCode::CREATED,
+                Json(ApiResponse::success(serde_json::json!({"id": id}))),
+            )
+                .into_response()
+        }
         Err(e) => {
             tracing::error!("DB error creating encounter: {e}");
             (
@@ -94,6 +110,19 @@ async fn sign_encounter(
     .await
     {
         Ok(r) if r.rows_affected() > 0 => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "clinical_encounter",
+                id,
+                "signed",
+                "phi",
+                "care_operations",
+                None, None, None, None, None,
+            )
+            .await;
             Json(ApiResponse::success(serde_json::json!({"signed": true}))).into_response()
         }
         Ok(_) => (
@@ -144,6 +173,19 @@ async fn add_addendum(
     .await
     {
         Ok(r) if r.rows_affected() > 0 => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "clinical_encounter",
+                id,
+                "addendum_added",
+                "phi",
+                "care_operations",
+                None, None, None, None, None,
+            )
+            .await;
             Json(ApiResponse::success(serde_json::json!({"addendum_added": true}))).into_response()
         }
         Ok(_) => (

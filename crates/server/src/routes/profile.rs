@@ -11,7 +11,7 @@ use axum::{
 };
 
 use crate::{auth::{extractor::AuthUser, permission::require_permission}, AppState};
-use bominal_db::queries::profile;
+use bominal_db::queries::{platform_event, profile};
 use bominal_types::ApiResponse;
 use bominal_types::rbac::{Resource, Action};
 
@@ -79,7 +79,22 @@ async fn update_my_profile(
     };
 
     match profile::update_person_profile(&state.pool, existing.id, &data).await {
-        Ok(updated) => Json(ApiResponse::success(updated)).into_response(),
+        Ok(updated) => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "profile",
+                existing.id,
+                "updated",
+                "pii",
+                "account",
+                None, None, None, None, None,
+            )
+            .await;
+            Json(ApiResponse::success(updated)).into_response()
+        }
         Err(e) => {
             tracing::error!("DB error updating profile: {e}");
             (

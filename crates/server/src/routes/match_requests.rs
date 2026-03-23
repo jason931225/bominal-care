@@ -11,7 +11,7 @@ use axum::{
 };
 
 use crate::{auth::{extractor::AuthUser, permission::require_permission}, middleware::validate::ValidatedJson, AppState};
-use bominal_db::queries::match_request;
+use bominal_db::queries::{match_request, platform_event};
 use bominal_types::{ApiResponse, PaginationMeta, PaginationParams};
 use bominal_types::inputs::MatchRequestInput;
 use bominal_types::rbac::{Resource, Action};
@@ -88,6 +88,20 @@ async fn create_match_request(
                 .into_response();
         }
     };
+
+    let _ = platform_event::insert_event(
+        &state.pool,
+        Some(user.id),
+        Some(&user.role.to_string()),
+        None,
+        "match_request",
+        created.id,
+        "created",
+        "internal",
+        "care_operations",
+        None, None, None, None, None,
+    )
+    .await;
 
     // Auto-run matching after creation
     let match_request_id = created.id;

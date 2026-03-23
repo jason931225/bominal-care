@@ -16,6 +16,7 @@ use crate::{
     middleware::validate::ValidatedJson,
     AppState,
 };
+use bominal_db::queries::platform_event;
 use bominal_types::medical::CreateAllergyInput;
 use bominal_types::rbac::{Action, Resource};
 use bominal_types::ApiResponse;
@@ -54,11 +55,26 @@ async fn create_allergy(
     .fetch_one(&state.pool)
     .await
     {
-        Ok(id) => (
-            StatusCode::CREATED,
-            Json(ApiResponse::success(serde_json::json!({"id": id}))),
-        )
-            .into_response(),
+        Ok(id) => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "allergy",
+                id,
+                "created",
+                "phi",
+                "care_operations",
+                None, None, None, None, None,
+            )
+            .await;
+            (
+                StatusCode::CREATED,
+                Json(ApiResponse::success(serde_json::json!({"id": id}))),
+            )
+                .into_response()
+        }
         Err(e) => {
             tracing::error!("DB error creating allergy: {e}");
             (
@@ -124,6 +140,19 @@ async fn deactivate_allergy(
     .await
     {
         Ok(r) if r.rows_affected() > 0 => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "allergy",
+                id,
+                "deactivated",
+                "phi",
+                "care_operations",
+                None, None, None, None, None,
+            )
+            .await;
             Json(ApiResponse::success(serde_json::json!({"deactivated": true}))).into_response()
         }
         Ok(_) => (

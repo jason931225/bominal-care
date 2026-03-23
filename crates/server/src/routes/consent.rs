@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::{auth::{extractor::AuthUser, permission::require_permission}, AppState};
 use crate::middleware::validate::ValidatedJson;
-use bominal_db::queries::{consent, profile};
+use bominal_db::queries::{consent, platform_event, profile};
 use bominal_types::ApiResponse;
 use bominal_types::inputs::ConsentInput;
 use bominal_types::rbac::{Resource, Action};
@@ -69,7 +69,22 @@ async fn grant_consent(
     };
 
     match consent::grant_consent(&state.pool, &data).await {
-        Ok(created) => (StatusCode::CREATED, Json(ApiResponse::success(created))).into_response(),
+        Ok(created) => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "consent",
+                created.id,
+                "granted",
+                "phi",
+                "compliance",
+                None, None, None, None, None,
+            )
+            .await;
+            (StatusCode::CREATED, Json(ApiResponse::success(created))).into_response()
+        }
         Err(e) => {
             tracing::error!("DB error granting consent: {e}");
             (
@@ -92,7 +107,22 @@ async fn revoke_consent(
     }
 
     match consent::revoke_consent(&state.pool, id, user.id).await {
-        Ok(data) => Json(ApiResponse::success(data)).into_response(),
+        Ok(data) => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "consent",
+                id,
+                "revoked",
+                "phi",
+                "compliance",
+                None, None, None, None, None,
+            )
+            .await;
+            Json(ApiResponse::success(data)).into_response()
+        }
         Err(e) => {
             tracing::error!("DB error revoking consent: {e}");
             let (status, msg) = match e {

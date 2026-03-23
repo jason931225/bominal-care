@@ -16,7 +16,7 @@ use crate::{
     auth::{extractor::AuthUser, permission::require_permission},
     AppState,
 };
-use bominal_db::queries::availability_slot;
+use bominal_db::queries::{availability_slot, platform_event};
 use bominal_types::rbac::{Action, Resource};
 use bominal_types::{ApiResponse, DayOfWeek};
 
@@ -126,7 +126,22 @@ async fn replace_slots(
     }
 
     match availability_slot::replace_slots(&state.pool, user.id, &slot_data).await {
-        Ok(data) => Json(ApiResponse::success(data)).into_response(),
+        Ok(data) => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "availability",
+                user.id,
+                "slots_replaced",
+                "internal",
+                "care_operations",
+                None, None, None, None, None,
+            )
+            .await;
+            Json(ApiResponse::success(data)).into_response()
+        }
         Err(e) => {
             tracing::error!("DB error replacing availability slots: {e}");
             (
@@ -220,7 +235,22 @@ async fn create_exception(
     )
     .await
     {
-        Ok(data) => (StatusCode::CREATED, Json(ApiResponse::success(data))).into_response(),
+        Ok(data) => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "availability_exception",
+                data.id,
+                "created",
+                "internal",
+                "care_operations",
+                None, None, None, None, None,
+            )
+            .await;
+            (StatusCode::CREATED, Json(ApiResponse::success(data))).into_response()
+        }
         Err(e) => {
             tracing::error!("DB error creating availability exception: {e}");
             (
@@ -243,7 +273,22 @@ async fn delete_exception(
     }
 
     match availability_slot::delete_exception(&state.pool, id, user.id).await {
-        Ok(true) => Json(ApiResponse::success(serde_json::json!({"deleted": true}))).into_response(),
+        Ok(true) => {
+            let _ = platform_event::insert_event(
+                &state.pool,
+                Some(user.id),
+                Some(&user.role.to_string()),
+                None,
+                "availability_exception",
+                id,
+                "deleted",
+                "internal",
+                "care_operations",
+                None, None, None, None, None,
+            )
+            .await;
+            Json(ApiResponse::success(serde_json::json!({"deleted": true}))).into_response()
+        }
         Ok(false) => (
             StatusCode::NOT_FOUND,
             Json(ApiResponse::<()>::error("예외를 찾을 수 없거나 이미 삭제되었습니다")),
