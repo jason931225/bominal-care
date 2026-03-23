@@ -92,9 +92,8 @@ pub fn clear_cache() {
     CACHE.with(|cache| cache.borrow_mut().clear());
 }
 
-/// Base URL for API calls (same origin in production).
+/// Base URL for API calls (same origin — Firebase Hosting proxies /api/ to Cloud Run).
 fn base_url() -> String {
-    // In dev, the API server runs on the same origin
     String::new()
 }
 

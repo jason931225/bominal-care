@@ -1,6 +1,6 @@
 # =============================================================================
 # Google Cloud Build — Build → Push to Artifact Registry → Deploy Cloud Run + Firebase Hosting
-# Region: asia-northeast3 (Seoul)
+# Region: us-central1 (Iowa) — colocated with Compute Engine e2-micro (Postgres)
 # =============================================================================
 
 steps:
@@ -48,7 +48,13 @@ steps:
       - '1'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'LEPTOS_SITE_ROOT=/site,RUST_LOG=info'
+      - 'RUST_LOG=info,APP_ENV=production,WEBAUTHN_RP_ID=care.bominal.com,WEBAUTHN_RP_ORIGIN=https://care.bominal.com,CORS_ORIGINS=https://care.bominal.com'
+      - '--set-secrets'
+      - 'DATABASE_URL=bominal-db-url:latest'
+      - '--vpc-connector'
+      - 'projects/bominal/locations/us-central1/connectors/bominal-vpc'
+      - '--vpc-egress'
+      - 'private-ranges-only'
 
   # Deploy Firebase Hosting (CDN for static assets, rewrites to Cloud Run for SSR)
   - name: 'gcr.io/cloud-builders/npm'
@@ -63,7 +69,7 @@ steps:
       - '${PROJECT_ID}'
 
 substitutions:
-  _REGION: asia-northeast3
+  _REGION: us-central1
   _REPO: bominal
 
 options:
