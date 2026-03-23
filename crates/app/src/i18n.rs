@@ -74,6 +74,7 @@ static TRANSLATIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::n
     m.insert("common.today", "오늘");
     m.insert("common.version", "v1.0.0");
     m.insert("common.mark_all_read", "모두 읽음");
+    m.insert("common.error_generic", "오류가 발생했습니다.");
 
     // =========================================================================
     // auth — sign-in, sign-out, terms, privacy
@@ -286,8 +287,12 @@ static TRANSLATIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::n
     m.insert("medical.patients.subtitle", "환자를 검색하여 핸드오프 세션을 시작하세요.");
     m.insert("medical.patients.search_placeholder", "환자 이름 또는 ID로 검색...");
     m.insert("medical.patients.search_hint", "환자를 검색하세요.");
+    m.insert("medical.patients.no_results", "검색 결과가 없습니다.");
+    m.insert("medical.patients.view_session", "세션 보기");
+    m.insert("medical.patients.search_error", "환자 검색 중 오류가 발생했습니다.");
     m.insert("medical.session.title", "핸드오프 세션");
     m.insert("medical.session.subtitle", "현재 연결된 환자의 정보를 확인하세요.");
+    m.insert("medical.session.active_session", "세션 활성 중");
     m.insert("medical.session.no_active", "활성 세션 없음");
     m.insert("medical.session.no_active_sub", "환자 조회에서 세션을 시작하세요.");
     m.insert("medical.session.demographics", "기본 정보");
@@ -313,6 +318,8 @@ static TRANSLATIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::n
     m.insert("medical.prescriptions.notes_placeholder", "추가 지시사항");
     m.insert("medical.prescriptions.submit", "처방전 발행");
     m.insert("medical.prescriptions.submitting", "발행 중...");
+    m.insert("medical.prescriptions.required_fields", "약품명과 용량은 필수 항목입니다.");
+    m.insert("medical.prescriptions.success", "처방전이 발행되었습니다.");
     m.insert("medical.appointments.title", "진료 예약");
     m.insert("medical.appointments.subtitle", "환자의 진료를 예약하세요.");
     m.insert("medical.appointments.new_booking", "새 예약");
@@ -324,6 +331,8 @@ static TRANSLATIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::n
     m.insert("medical.appointments.notes_placeholder", "추가 메모");
     m.insert("medical.appointments.submit", "예약 등록");
     m.insert("medical.appointments.submitting", "등록 중...");
+    m.insert("medical.appointments.required_fields", "의료기관명과 예약 날짜는 필수 항목입니다.");
+    m.insert("medical.appointments.success", "진료 예약이 등록되었습니다.");
     m.insert("medical.appointments.upcoming", "예정된 진료");
     m.insert("medical.appointments.no_upcoming", "예정된 진료가 없습니다.");
     m.insert("medical.history.title", "진료 이력");
@@ -331,10 +340,53 @@ static TRANSLATIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::n
     m.insert("medical.history.no_patient", "환자를 먼저 선택해주세요");
     m.insert("medical.history.conditions", "질환 이력");
     m.insert("medical.history.no_conditions", "등록된 질환 이력이 없습니다.");
+    m.insert("medical.history.diagnosed", "진단일");
+    m.insert("medical.history.treated_by", "담당의");
     m.insert("medical.history.past_prescriptions", "과거 처방 이력");
     m.insert("medical.history.no_prescriptions", "과거 처방 이력이 없습니다.");
     m.insert("medical.history.past_appointments", "과거 진료 이력");
     m.insert("medical.history.no_appointments", "과거 진료 이력이 없습니다.");
+
+    // =========================================================================
+    // pharmacy — pharmacy portal pages
+    // =========================================================================
+    m.insert("nav.portal.pharmacy", "Bominal Pharmacy");
+    m.insert("pharmacy.nav.subtitle", "약국 포털");
+    m.insert("pharmacy.nav.dashboard", "대시보드");
+    m.insert("pharmacy.nav.queue", "조제 대기");
+    m.insert("pharmacy.nav.inventory", "재고 관리");
+    m.insert("pharmacy.nav.fulfillment", "조제 이행");
+    m.insert("pharmacy.user.initial", "약");
+    m.insert("pharmacy.user.name", "약사");
+    m.insert("pharmacy.user.role", "담당 약사");
+    m.insert("pharmacy.topbar.title", "약국 관리 시스템");
+    m.insert("pharmacy.topbar.subtitle", "처방 조제 및 재고 관리");
+    m.insert("pharmacy.dashboard.title", "약국 대시보드");
+    m.insert("pharmacy.dashboard.subtitle", "처방 대기 및 조제 현황을 확인하세요.");
+    m.insert("pharmacy.dashboard.pending", "대기 처방");
+    m.insert("pharmacy.dashboard.pending_sub", "조제 대기 중인 처방전");
+    m.insert("pharmacy.dashboard.quick_actions", "빠른 작업");
+    m.insert("pharmacy.dashboard.action_queue", "조제 대기열");
+    m.insert("pharmacy.dashboard.action_queue_sub", "대기 중인 처방전을 확인하세요");
+    m.insert("pharmacy.dashboard.action_inventory", "재고 관리");
+    m.insert("pharmacy.dashboard.action_inventory_sub", "의약품 재고를 관리하세요");
+    m.insert("pharmacy.dashboard.action_fulfillment", "조제 이행");
+    m.insert("pharmacy.dashboard.action_fulfillment_sub", "조제 완료 처리를 하세요");
+    m.insert("pharmacy.queue.title", "조제 대기열");
+    m.insert("pharmacy.queue.subtitle", "조제 대기 중인 처방전 목록입니다.");
+    m.insert("pharmacy.queue.empty", "대기 중인 처방전이 없습니다.");
+    m.insert("pharmacy.queue.senior_name", "어르신 이름");
+    m.insert("pharmacy.queue.medication", "약품명");
+    m.insert("pharmacy.queue.dosage", "용량");
+    m.insert("pharmacy.queue.frequency", "복용 빈도");
+    m.insert("pharmacy.queue.prescribed_date", "처방일");
+    m.insert("pharmacy.queue.confirm", "조제 확인");
+    m.insert("pharmacy.queue.confirmed", "조제가 완료되었습니다.");
+    m.insert("pharmacy.queue.confirming", "처리 중...");
+    m.insert("pharmacy.inventory.title", "재고 관리");
+    m.insert("pharmacy.inventory.subtitle", "의약품 재고 현황을 관리하세요.");
+    m.insert("pharmacy.fulfillment.title", "조제 이행");
+    m.insert("pharmacy.fulfillment.subtitle", "조제 완료된 처방전을 관리하세요.");
 
     // =========================================================================
     // error — error messages

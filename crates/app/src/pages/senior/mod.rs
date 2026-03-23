@@ -177,31 +177,3 @@ pub(crate) fn FormRow(
         </div>
     }
 }
-
-/// Reusable pagination controls.
-#[component]
-pub(crate) fn PaginationControls(
-    page: RwSignal<i64>,
-    total: i64,
-    limit: i64,
-) -> impl IntoView {
-    let has_next = total > page.get_untracked() * limit;
-
-    view! {
-        <div class="flex justify-between items-center pt-4">
-            <button
-                class="text-lg text-primary disabled:text-txt-disabled"
-                disabled=move || page.get() <= 1
-                on:click=move |_| page.set(page.get_untracked() - 1)
-            >"< 이전"</button>
-            <span class="text-base text-txt-tertiary">
-                {move || format!("{}페이지", page.get())}
-            </span>
-            <button
-                class="text-lg text-primary disabled:text-txt-disabled"
-                disabled=move || !has_next
-                on:click=move |_| page.set(page.get_untracked() + 1)
-            >"다음 >"</button>
-        </div>
-    }
-}

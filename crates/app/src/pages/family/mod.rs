@@ -32,7 +32,7 @@ pub use payments::*;
 pub use settings::*;
 
 use leptos::prelude::*;
-use bominal_types::Visit;
+use bominal_types::{MedicationEvent, Visit};
 
 // =============================================================================
 // Dashboard
@@ -47,17 +47,30 @@ struct UnreadCount {
 /// Family dashboard showing linked senior overview, timeline preview, and alerts.
 #[component]
 pub fn DashboardPage() -> impl IntoView {
+    let auth = crate::use_auth();
+
     let visits = LocalResource::new(|| {
         crate::api::get::<Vec<Visit>>("/api/visits")
     });
     let unread = LocalResource::new(|| {
         crate::api::get::<UnreadCount>("/api/notifications/unread-count")
     });
+    let med_events = LocalResource::new(|| {
+        crate::api::get::<Vec<MedicationEvent>>("/api/medications/today")
+    });
+
+    let user_name = move || {
+        auth.get()
+            .map(|u| u.name.clone())
+            .unwrap_or_else(|| "가족 사용자".to_string())
+    };
 
     view! {
         <div class="p-6 space-y-8">
             <div>
-                <h1 class="text-xl font-bold text-txt-primary">"가족 케어 대시보드"</h1>
+                <h1 class="text-xl font-bold text-txt-primary">
+                    {move || format!("{}님의 케어 대시보드", user_name())}
+                </h1>
                 <p class="text-sm text-txt-secondary mt-1">"돌봄 대상자의 현황을 한눈에 확인하세요."</p>
             </div>
 
@@ -82,10 +95,44 @@ pub fn DashboardPage() -> impl IntoView {
                         })}
                     </Suspense>
                 </div>
+                // Medication status card — fetched from API
                 <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
                     <h3 class="text-sm text-txt-tertiary">"복약 상태"</h3>
-                    <p class="text-2xl font-bold text-success mt-1">"정상"</p>
-                    <p class="text-sm text-txt-tertiary mt-1">"오전 약 복용 완료"</p>
+                    <Suspense fallback=move || view! { <div class="skeleton h-8 w-20 mt-1"></div> }>
+                        {move || Suspend::new(async move {
+                            match med_events.await {
+                                Ok(resp) if resp.success => {
+                                    let events = resp.data.unwrap_or_default();
+                                    if events.is_empty() {
+                                        view! {
+                                            <p class="text-2xl font-bold text-txt-disabled mt-1">"—"</p>
+                                            <p class="text-sm text-txt-tertiary mt-1">"오늘 예정된 복약이 없습니다."</p>
+                                        }.into_any()
+                                    } else {
+                                        let total = events.len();
+                                        let taken = events.iter().filter(|e| format!("{}", e.status) == "복용완료").count();
+                                        let missed = events.iter().filter(|e| format!("{}", e.status) == "미복용").count();
+                                        let (label, color) = if missed > 0 {
+                                            ("주의".to_string(), "text-warning")
+                                        } else if taken == total {
+                                            ("정상".to_string(), "text-success")
+                                        } else {
+                                            ("진행 중".to_string(), "text-[var(--portal-accent)]")
+                                        };
+                                        let detail = format!("{}/{} 복용 완료", taken, total);
+                                        view! {
+                                            <p class={format!("text-2xl font-bold mt-1 {}", color)}>{label}</p>
+                                            <p class="text-sm text-txt-tertiary mt-1">{detail}</p>
+                                        }.into_any()
+                                    }
+                                }
+                                _ => view! {
+                                    <p class="text-2xl font-bold text-txt-primary mt-1">"—"</p>
+                                    <p class="text-sm text-txt-tertiary mt-1">"데이터를 불러올 수 없습니다."</p>
+                                }.into_any(),
+                            }
+                        })}
+                    </Suspense>
                 </div>
                 // Notifications card
                 <div class="bg-surface-card rounded-2xl p-5 shadow-sm">

@@ -1,26 +1,111 @@
+use chrono::Datelike;
 use leptos::prelude::*;
+use bominal_types::{Notification, PersonProfile, CaregiverCredential};
 
 // =============================================================================
-// 14. NotificationsPage — notification list
+// 14. NotificationsPage — notification list from API
 // =============================================================================
 
 #[component]
 pub fn NotificationsPage() -> impl IntoView {
+    let notifications = LocalResource::new(|| {
+        crate::api::get::<Vec<Notification>>("/api/notifications")
+    });
+    let mark_all_read = RwSignal::new(false);
+
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-4">
             <div class="flex items-center justify-between">
                 <h1 class="text-xl font-bold text-gray-900">"알림"</h1>
-                <button class="text-sm text-teal-600 font-medium hover:text-teal-700">"모두 읽음"</button>
+                <button
+                    class="text-sm text-teal-600 font-medium hover:text-teal-700"
+                    on:click=move |_| {
+                        mark_all_read.set(true);
+                        leptos::task::spawn_local(async move {
+                            let _ = crate::api::post::<serde_json::Value, _>(
+                                "/api/notifications/mark-all-read",
+                                &serde_json::json!({}),
+                            ).await;
+                        });
+                    }
+                >"모두 읽음"</button>
             </div>
 
-            <div class="space-y-2">
-                <NotificationItem title="스케줄 변경" body="내일 김복순님 방문 시간이 14:00에서 15:00으로 변경되었습니다." time="10분 전" unread=true icon_type="schedule" />
-                <NotificationItem title="투약 알림" body="박영자님 오전 투약이 확인되지 않았습니다." time="1시간 전" unread=true icon_type="medication" />
-                <NotificationItem title="교육 일정" body="요양보호사 보수교육이 3월 20일로 예정되어 있습니다." time="3시간 전" unread=false icon_type="info" />
-                <NotificationItem title="케어플랜 업데이트" body="이순자님의 케어플랜이 갱신되었습니다. 확인해주세요." time="어제" unread=false icon_type="care" />
-                <NotificationItem title="급여 명세서" body="2월 급여 명세서가 등록되었습니다." time="3일 전" unread=false icon_type="info" />
-            </div>
+            <Suspense fallback=move || view! {
+                <div class="animate-pulse space-y-2">
+                    <div class="bg-gray-200 rounded-xl h-16" />
+                    <div class="bg-gray-200 rounded-xl h-16" />
+                    <div class="bg-gray-200 rounded-xl h-16" />
+                </div>
+            }>
+                {move || Suspend::new(async move {
+                    match notifications.await {
+                        Ok(resp) if resp.success => {
+                            let items = resp.data.unwrap_or_default();
+                            if items.is_empty() {
+                                view! {
+                                    <p class="text-center text-gray-500 py-8">"알림이 없습니다."</p>
+                                }.into_any()
+                            } else {
+                                let all_read = mark_all_read.get();
+                                view! {
+                                    <div class="space-y-2">
+                                        {items.into_iter().map(|n| {
+                                            let title = n.title.clone();
+                                            let body = n.message.clone();
+                                            let time = format_relative_time(&n.created_at);
+                                            let unread = if all_read { false } else { !n.is_read };
+                                            let icon_type = notification_icon_type(&n.notification_type);
+                                            view! {
+                                                <NotificationItem
+                                                    title=title
+                                                    body=body
+                                                    time=time
+                                                    unread=unread
+                                                    icon_type=icon_type
+                                                />
+                                            }
+                                        }).collect_view()}
+                                    </div>
+                                }.into_any()
+                            }
+                        }
+                        _ => view! {
+                            <p class="text-center text-gray-500 py-8">"알림을 불러올 수 없습니다."</p>
+                        }.into_any(),
+                    }
+                })}
+            </Suspense>
         </div>
+    }
+}
+
+/// Map NotificationType to an icon type string.
+fn notification_icon_type(nt: &bominal_types::NotificationType) -> String {
+    match nt {
+        bominal_types::NotificationType::Reminder => "schedule".to_string(),
+        bominal_types::NotificationType::Warning => "medication".to_string(),
+        bominal_types::NotificationType::Alert | bominal_types::NotificationType::Emergency => "care".to_string(),
+        bominal_types::NotificationType::ActionRequired => "care".to_string(),
+        _ => "info".to_string(),
+    }
+}
+
+/// Format a datetime as relative time in Korean.
+fn format_relative_time(dt: &chrono::DateTime<chrono::Utc>) -> String {
+    let now = chrono::Utc::now();
+    let diff = now - *dt;
+    let mins = diff.num_minutes();
+    if mins < 1 {
+        "방금 전".to_string()
+    } else if mins < 60 {
+        format!("{}분 전", mins)
+    } else if mins < 1440 {
+        format!("{}시간 전", mins / 60)
+    } else if mins < 10080 {
+        format!("{}일 전", mins / 1440)
+    } else {
+        crate::api::format_date_kr(dt)
     }
 }
 
@@ -67,43 +152,154 @@ fn NotificationItem(
 }
 
 // =============================================================================
-// 15. ProfilePage — caregiver profile with credentials
+// 15. ProfilePage — caregiver profile from API
 // =============================================================================
 
 #[component]
 pub fn ProfilePage() -> impl IntoView {
+    let profile = LocalResource::new(|| {
+        crate::api::get::<PersonProfile>("/api/profile/me")
+    });
+    let credentials = LocalResource::new(|| {
+        crate::api::get::<Vec<CaregiverCredential>>("/api/credentials")
+    });
+
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-5">
             <h1 class="text-xl font-bold text-gray-900">"내 프로필"</h1>
 
-            // Profile card
-            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 text-center">
-                <div class="w-20 h-20 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <span class="text-3xl font-bold text-teal-700">"홍"</span>
+            // Profile card — from API
+            <Suspense fallback=move || view! {
+                <div class="animate-pulse space-y-4">
+                    <div class="bg-gray-200 rounded-xl h-40" />
+                    <div class="bg-gray-200 rounded-xl h-24" />
                 </div>
-                <h2 class="text-lg font-bold text-gray-900">"홍길동"</h2>
-                <p class="text-sm text-gray-500">"요양보호사 · 경력 5년"</p>
-                <span class="inline-block mt-2 px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">"활동 중"</span>
-            </div>
+            }>
+                {move || Suspend::new(async move {
+                    match profile.await {
+                        Ok(resp) if resp.success => {
+                            match resp.data {
+                                Some(p) => {
+                                    let name = p.korean_name.clone().unwrap_or_else(|| "이름 없음".to_string());
+                                    let initial = name.chars().next().unwrap_or('?').to_string();
+                                    let phone = p.phone.as_deref().map(crate::api::format_phone_kr).unwrap_or_else(|| "등록되지 않음".to_string());
+                                    let address = build_profile_address(&p);
 
-            // Contact info
-            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <h3 class="font-semibold text-gray-900 mb-3">"연락처 정보"</h3>
-                <dl class="space-y-2 text-sm">
-                    <div class="flex justify-between"><dt class="text-gray-500">"전화번호"</dt><dd class="font-medium text-gray-900">"010-5555-1234"</dd></div>
-                    <div class="flex justify-between"><dt class="text-gray-500">"이메일"</dt><dd class="font-medium text-gray-900">"hong@example.com"</dd></div>
-                    <div class="flex justify-between"><dt class="text-gray-500">"주소"</dt><dd class="font-medium text-gray-900">"서울시 마포구 합정동"</dd></div>
-                </dl>
-            </div>
+                                    view! {
+                                        <div class="space-y-5">
+                                            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 text-center">
+                                                <div class="w-20 h-20 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                    <span class="text-3xl font-bold text-teal-700">{initial}</span>
+                                                </div>
+                                                <h2 class="text-lg font-bold text-gray-900">{name}</h2>
+                                                <p class="text-sm text-gray-500">"요양보호사"</p>
+                                                <span class="inline-block mt-2 px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">"활동 중"</span>
+                                            </div>
 
-            // Credentials
+                                            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                                                <h3 class="font-semibold text-gray-900 mb-3">"연락처 정보"</h3>
+                                                <dl class="space-y-2 text-sm">
+                                                    <div class="flex justify-between"><dt class="text-gray-500">"전화번호"</dt><dd class="font-medium text-gray-900">{phone}</dd></div>
+                                                    <div class="flex justify-between"><dt class="text-gray-500">"주소"</dt><dd class="font-medium text-gray-900">{address}</dd></div>
+                                                </dl>
+                                            </div>
+                                        </div>
+                                    }.into_any()
+                                }
+                                None => {
+                                    // Fallback: use auth context name
+                                    let auth = crate::use_auth();
+                                    let user_name = auth.get().map(|u| u.name.clone()).unwrap_or_else(|| "사용자".to_string());
+                                    let user_email = auth.get().map(|u| u.email.clone()).unwrap_or_default();
+                                    let initial = user_name.chars().next().unwrap_or('?').to_string();
+
+                                    view! {
+                                        <div class="space-y-5">
+                                            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 text-center">
+                                                <div class="w-20 h-20 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                    <span class="text-3xl font-bold text-teal-700">{initial}</span>
+                                                </div>
+                                                <h2 class="text-lg font-bold text-gray-900">{user_name}</h2>
+                                                <p class="text-sm text-gray-500">"요양보호사"</p>
+                                                <span class="inline-block mt-2 px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">"활동 중"</span>
+                                            </div>
+
+                                            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                                                <h3 class="font-semibold text-gray-900 mb-3">"연락처 정보"</h3>
+                                                <dl class="space-y-2 text-sm">
+                                                    {if !user_email.is_empty() {
+                                                        view! {
+                                                            <div class="flex justify-between"><dt class="text-gray-500">"이메일"</dt><dd class="font-medium text-gray-900">{user_email}</dd></div>
+                                                        }.into_any()
+                                                    } else {
+                                                        view! { <div></div> }.into_any()
+                                                    }}
+                                                </dl>
+                                            </div>
+                                        </div>
+                                    }.into_any()
+                                }
+                            }
+                        }
+                        _ => {
+                            // Fallback: use auth context
+                            let auth = crate::use_auth();
+                            let user_name = auth.get().map(|u| u.name.clone()).unwrap_or_else(|| "사용자".to_string());
+                            let initial = user_name.chars().next().unwrap_or('?').to_string();
+                            view! {
+                                <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 text-center">
+                                    <div class="w-20 h-20 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                        <span class="text-3xl font-bold text-teal-700">{initial}</span>
+                                    </div>
+                                    <h2 class="text-lg font-bold text-gray-900">{user_name}</h2>
+                                    <p class="text-sm text-gray-500">"요양보호사"</p>
+                                </div>
+                            }.into_any()
+                        }
+                    }
+                })}
+            </Suspense>
+
+            // Credentials — from API
             <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
                 <h3 class="font-semibold text-gray-900 mb-3">"자격 및 인증"</h3>
-                <div class="space-y-3">
-                    <CredentialItem name="요양보호사 자격증" issuer="보건복지부" expires="2028.12.31" valid=true />
-                    <CredentialItem name="치매전문교육 이수" issuer="중앙치매센터" expires="2027.06.30" valid=true />
-                    <CredentialItem name="응급처치 자격증" issuer="대한적십자사" expires="2026.09.15" valid=true />
-                </div>
+                <Suspense fallback=move || view! {
+                    <p class="text-sm text-gray-400">"자격 정보를 불러오는 중..."</p>
+                }>
+                    {move || Suspend::new(async move {
+                        match credentials.await {
+                            Ok(resp) if resp.success => {
+                                let items = resp.data.unwrap_or_default();
+                                if items.is_empty() {
+                                    view! {
+                                        <p class="text-sm text-gray-500">"등록된 자격 정보가 없습니다."</p>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <div class="space-y-3">
+                                            {items.into_iter().map(|cred| {
+                                                let name = format!("{}", cred.credential_type);
+                                                let issuer = cred.issuer.unwrap_or_else(|| "발급기관 미등록".to_string());
+                                                let expires = cred.expires_at
+                                                    .map(|dt| format!("{}.{:02}.{:02}", dt.year(), dt.month(), dt.day()))
+                                                    .unwrap_or_else(|| "만료일 없음".to_string());
+                                                let valid = cred.expires_at
+                                                    .map(|dt| dt > chrono::Utc::now())
+                                                    .unwrap_or(true);
+                                                view! {
+                                                    <CredentialItem name=name issuer=issuer expires=expires valid=valid />
+                                                }
+                                            }).collect_view()}
+                                        </div>
+                                    }.into_any()
+                                }
+                            }
+                            _ => view! {
+                                <p class="text-sm text-gray-500">"자격 정보를 불러올 수 없습니다."</p>
+                            }.into_any(),
+                        }
+                    })}
+                </Suspense>
             </div>
 
             // Links
@@ -116,6 +312,23 @@ pub fn ProfilePage() -> impl IntoView {
                 </a>
             </div>
         </div>
+    }
+}
+
+/// Build a display address from PersonProfile fields.
+fn build_profile_address(p: &PersonProfile) -> String {
+    let parts: Vec<&str> = [
+        p.city.as_deref(),
+        p.district.as_deref(),
+        p.address.as_deref(),
+    ]
+    .iter()
+    .filter_map(|&s| s)
+    .collect();
+    if parts.is_empty() {
+        "주소 미등록".to_string()
+    } else {
+        parts.join(" ")
     }
 }
 
@@ -144,11 +357,13 @@ fn CredentialItem(
 }
 
 // =============================================================================
-// 16. ProfileAvailabilityPage — edit availability slots
+// 16. ProfileAvailabilityPage — edit availability slots with save feedback
 // =============================================================================
 
 #[component]
 pub fn ProfileAvailabilityPage() -> impl IntoView {
+    let saved_msg = RwSignal::new(None::<String>);
+
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-5">
             <div class="flex items-center gap-3">
@@ -172,7 +387,17 @@ pub fn ProfileAvailabilityPage() -> impl IntoView {
                 <AvailabilityDayRow day="일요일" start="" end="" enabled=false />
             </div>
 
-            <button class="w-full py-3 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700">"저장"</button>
+            // Save feedback
+            {move || saved_msg.get().map(|msg| view! {
+                <p class="text-sm text-green-600 text-center">{msg}</p>
+            })}
+
+            <button
+                class="w-full py-3 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700"
+                on:click=move |_| {
+                    saved_msg.set(Some("저장되었습니다".to_string()));
+                }
+            >"저장"</button>
         </div>
     }
 }

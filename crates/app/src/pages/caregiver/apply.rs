@@ -1,6 +1,45 @@
 use leptos::prelude::*;
 use bominal_types::CaregiverApplication;
 
+// ---------------------------------------------------------------------------
+// localStorage helpers for multi-step form persistence
+// ---------------------------------------------------------------------------
+
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = localStorage, js_name = setItem)]
+    fn ls_set(key: &str, value: &str);
+
+    #[wasm_bindgen(js_namespace = localStorage, js_name = getItem)]
+    fn ls_get(key: &str) -> Option<String>;
+
+    #[wasm_bindgen(js_namespace = localStorage, js_name = removeItem)]
+    fn ls_remove(key: &str);
+}
+
+fn save_field(key: &str, value: &str) {
+    ls_set(&format!("apply_{key}"), value);
+}
+
+fn load_field(key: &str) -> String {
+    ls_get(&format!("apply_{key}")).unwrap_or_default()
+}
+
+fn clear_form() {
+    let keys = [
+        "name", "phone", "experience", "regions", "schedule_days",
+        "schedule_start", "schedule_end", "overnight", "weekend",
+        "emergency_call", "services", "specializations",
+        "ref1_name", "ref1_rel", "ref1_phone",
+        "ref2_name", "ref2_rel", "ref2_phone",
+    ];
+    for k in keys {
+        ls_remove(&format!("apply_{k}"));
+    }
+}
+
 // =============================================================================
 // 17. ApplyOverviewPage — application landing / CTA page
 // =============================================================================
@@ -63,9 +102,13 @@ fn ApplyStepPreview(
 
 #[component]
 pub fn ApplyIdentityPage() -> impl IntoView {
-    let name = RwSignal::new(String::new());
-    let phone = RwSignal::new(String::new());
+    let name = RwSignal::new(load_field("name"));
+    let phone = RwSignal::new(load_field("phone"));
     let verified = RwSignal::new(false);
+
+    // Save on every input change
+    Effect::new(move || { save_field("name", &name.get()); });
+    Effect::new(move || { save_field("phone", &phone.get()); });
 
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-5">
@@ -167,6 +210,10 @@ fn ApplyNavButtons(
 
 #[component]
 pub fn ApplyCredentialsPage() -> impl IntoView {
+    let experience = RwSignal::new(load_field("experience"));
+
+    Effect::new(move || { save_field("experience", &experience.get()); });
+
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-5">
             <ApplyStepHeader step=2 total=7 title="자격 등록" />
@@ -195,13 +242,16 @@ pub fn ApplyCredentialsPage() -> impl IntoView {
                 // Experience
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-gray-700">"경력 기간"</label>
-                    <select class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500">
-                        <option value="">"경력을 선택하세요"</option>
-                        <option value="0">"신입"</option>
-                        <option value="1">"1년 미만"</option>
-                        <option value="3">"1~3년"</option>
-                        <option value="5">"3~5년"</option>
-                        <option value="10">"5년 이상"</option>
+                    <select
+                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        on:change=move |ev| experience.set(event_target_value(&ev))
+                    >
+                        <option value="" selected=move || experience.get().is_empty()>"경력을 선택하세요"</option>
+                        <option value="0" selected=move || experience.get() == "0">"신입"</option>
+                        <option value="1" selected=move || experience.get() == "1">"1년 미만"</option>
+                        <option value="3" selected=move || experience.get() == "3">"1~3년"</option>
+                        <option value="5" selected=move || experience.get() == "5">"3~5년"</option>
+                        <option value="10" selected=move || experience.get() == "10">"5년 이상"</option>
                     </select>
                 </div>
             </div>
@@ -217,6 +267,25 @@ pub fn ApplyCredentialsPage() -> impl IntoView {
 
 #[component]
 pub fn ApplyServiceRegionPage() -> impl IntoView {
+    let saved_regions = load_field("regions");
+    let districts_list: &[&str] = &["강남구", "서초구", "송파구", "마포구", "영등포구", "강서구", "용산구", "종로구"];
+
+    // Track checked state per district, pre-populated from localStorage
+    let checked_signals: Vec<(&str, RwSignal<bool>)> = districts_list.iter().map(|d| {
+        let is_checked = saved_regions.contains(d);
+        (*d, RwSignal::new(is_checked))
+    }).collect();
+
+    // Save whenever any checkbox changes
+    let signals_for_effect = checked_signals.clone();
+    Effect::new(move || {
+        let selected: Vec<&str> = signals_for_effect.iter()
+            .filter(|(_, sig)| sig.get())
+            .map(|(name, _)| *name)
+            .collect();
+        save_field("regions", &selected.join(", "));
+    });
+
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-5">
             <ApplyStepHeader step=3 total=7 title="서비스 지역" />
@@ -224,7 +293,6 @@ pub fn ApplyServiceRegionPage() -> impl IntoView {
             <p class="text-sm text-gray-600">"활동 가능한 지역을 선택해주세요. (복수 선택 가능)"</p>
 
             <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
-                // City select
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-gray-700">"시/도"</label>
                     <select class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500">
@@ -236,12 +304,10 @@ pub fn ApplyServiceRegionPage() -> impl IntoView {
                     </select>
                 </div>
 
-                // District checkboxes
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-gray-700">"구/군"</label>
                     <div class="grid grid-cols-2 gap-2">
-                        {["강남구", "서초구", "송파구", "마포구", "영등포구", "강서구", "용산구", "종로구"].into_iter().map(|district| {
-                            let checked = RwSignal::new(false);
+                        {checked_signals.into_iter().map(|(district, checked)| {
                             view! {
                                 <label class="flex items-center gap-2 p-2 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
                                     <input
@@ -269,6 +335,29 @@ pub fn ApplyServiceRegionPage() -> impl IntoView {
 
 #[component]
 pub fn ApplySchedulePage() -> impl IntoView {
+    let saved_days = load_field("schedule_days");
+    let days_list: &[&str] = &["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"];
+
+    let day_signals: Vec<(&str, RwSignal<bool>)> = days_list.iter().map(|d| {
+        (*d, RwSignal::new(saved_days.contains(d)))
+    }).collect();
+
+    let overnight = RwSignal::new(load_field("overnight") == "true");
+    let weekend = RwSignal::new(load_field("weekend") == "true");
+    let emergency_call = RwSignal::new(load_field("emergency_call") == "true");
+
+    let days_for_effect = day_signals.clone();
+    Effect::new(move || {
+        let selected: Vec<&str> = days_for_effect.iter()
+            .filter(|(_, sig)| sig.get())
+            .map(|(name, _)| *name)
+            .collect();
+        save_field("schedule_days", &selected.join(", "));
+    });
+    Effect::new(move || { save_field("overnight", if overnight.get() { "true" } else { "false" }); });
+    Effect::new(move || { save_field("weekend", if weekend.get() { "true" } else { "false" }); });
+    Effect::new(move || { save_field("emergency_call", if emergency_call.get() { "true" } else { "false" }); });
+
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-5">
             <ApplyStepHeader step=4 total=7 title="근무 일정" />
@@ -276,8 +365,7 @@ pub fn ApplySchedulePage() -> impl IntoView {
             <p class="text-sm text-gray-600">"근무 가능한 요일과 시간대를 선택해주세요."</p>
 
             <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
-                {["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"].into_iter().map(|day| {
-                    let enabled = RwSignal::new(false);
+                {day_signals.into_iter().map(|(day, enabled)| {
                     view! {
                         <div class="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                             <label class="flex items-center gap-3">
@@ -309,19 +397,27 @@ pub fn ApplySchedulePage() -> impl IntoView {
                 }).collect_view()}
             </div>
 
-            // Preferences
             <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
                 <h3 class="font-semibold text-gray-900">"추가 설정"</h3>
                 <label class="flex items-center gap-3">
-                    <input type="checkbox" class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500" />
+                    <input type="checkbox" class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500"
+                        prop:checked=move || overnight.get()
+                        on:change=move |_| overnight.update(|v| *v = !*v)
+                    />
                     <span class="text-sm text-gray-700">"야간 근무 가능"</span>
                 </label>
                 <label class="flex items-center gap-3">
-                    <input type="checkbox" class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500" />
+                    <input type="checkbox" class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500"
+                        prop:checked=move || weekend.get()
+                        on:change=move |_| weekend.update(|v| *v = !*v)
+                    />
                     <span class="text-sm text-gray-700">"주말 근무 가능"</span>
                 </label>
                 <label class="flex items-center gap-3">
-                    <input type="checkbox" class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500" />
+                    <input type="checkbox" class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500"
+                        prop:checked=move || emergency_call.get()
+                        on:change=move |_| emergency_call.update(|v| *v = !*v)
+                    />
                     <span class="text-sm text-gray-700">"긴급 호출 가능"</span>
                 </label>
             </div>
@@ -337,6 +433,37 @@ pub fn ApplySchedulePage() -> impl IntoView {
 
 #[component]
 pub fn ApplyServicesPage() -> impl IntoView {
+    let saved_services = load_field("services");
+    let saved_specs = load_field("specializations");
+
+    let service_items: &[(&str, &str)] = &[
+        ("방문요양", "식사, 세면, 배설 등 일상생활 지원"),
+        ("방문목욕", "이동식 욕조를 이용한 목욕 서비스"),
+        ("방문간호", "간호, 진료보조 등 의료 서비스"),
+        ("주야간보호", "주간/야간 시설 보호 서비스"),
+        ("인지활동", "치매 예방 및 인지 자극 프로그램"),
+        ("정서지원", "말벗, 외출 동행 등 정서적 지원"),
+    ];
+    let svc_signals: Vec<(&str, RwSignal<bool>)> = service_items.iter().map(|(name, _)| {
+        (*name, RwSignal::new(saved_services.contains(name)))
+    }).collect();
+
+    let spec_items: &[&str] = &["치매 케어 경험", "와상 환자 케어", "재활 보조"];
+    let spec_signals: Vec<(&str, RwSignal<bool>)> = spec_items.iter().map(|name| {
+        (*name, RwSignal::new(saved_specs.contains(name)))
+    }).collect();
+
+    let svcs_for_effect = svc_signals.clone();
+    let specs_for_effect = spec_signals.clone();
+    Effect::new(move || {
+        let selected: Vec<&str> = svcs_for_effect.iter().filter(|(_, s)| s.get()).map(|(n, _)| *n).collect();
+        save_field("services", &selected.join(", "));
+    });
+    Effect::new(move || {
+        let selected: Vec<&str> = specs_for_effect.iter().filter(|(_, s)| s.get()).map(|(n, _)| *n).collect();
+        save_field("specializations", &selected.join(", "));
+    });
+
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-5">
             <ApplyStepHeader step=5 total=7 title="서비스 유형" />
@@ -344,70 +471,57 @@ pub fn ApplyServicesPage() -> impl IntoView {
             <p class="text-sm text-gray-600">"제공 가능한 서비스를 모두 선택해주세요."</p>
 
             <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
-                <ServiceTypeOption title="방문요양" desc="식사, 세면, 배설 등 일상생활 지원" />
-                <ServiceTypeOption title="방문목욕" desc="이동식 욕조를 이용한 목욕 서비스" />
-                <ServiceTypeOption title="방문간호" desc="간호, 진료보조 등 의료 서비스" />
-                <ServiceTypeOption title="주야간보호" desc="주간/야간 시설 보호 서비스" />
-                <ServiceTypeOption title="인지활동" desc="치매 예방 및 인지 자극 프로그램" />
-                <ServiceTypeOption title="정서지원" desc="말벗, 외출 동행 등 정서적 지원" />
+                {service_items.iter().zip(svc_signals.into_iter()).map(|((title, desc), (_, selected))| {
+                    let t = title.to_string();
+                    let d = desc.to_string();
+                    view! {
+                        <button
+                            type="button"
+                            class="w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors"
+                            class=("border-teal-500", move || selected.get())
+                            class=("bg-teal-50", move || selected.get())
+                            class=("border-gray-200", move || !selected.get())
+                            class=("hover:bg-gray-50", move || !selected.get())
+                            on:click=move |_| selected.update(|v| *v = !*v)
+                        >
+                            <div
+                                class="w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 mt-0.5"
+                                class=("border-teal-600", move || selected.get())
+                                class=("bg-teal-600", move || selected.get())
+                                class=("border-gray-300", move || !selected.get())
+                            >
+                                <Show when=move || selected.get()>
+                                    <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                </Show>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-900">{t}</p>
+                                <p class="text-xs text-gray-500">{d}</p>
+                            </div>
+                        </button>
+                    }
+                }).collect_view()}
             </div>
 
-            // Specializations
             <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
                 <h3 class="font-semibold text-gray-900">"전문 분야"</h3>
-                <label class="flex items-center gap-3">
-                    <input type="checkbox" class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500" />
-                    <span class="text-sm text-gray-700">"치매 케어 경험"</span>
-                </label>
-                <label class="flex items-center gap-3">
-                    <input type="checkbox" class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500" />
-                    <span class="text-sm text-gray-700">"와상 환자 케어"</span>
-                </label>
-                <label class="flex items-center gap-3">
-                    <input type="checkbox" class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500" />
-                    <span class="text-sm text-gray-700">"재활 보조"</span>
-                </label>
+                {spec_signals.into_iter().map(|(name, checked)| {
+                    view! {
+                        <label class="flex items-center gap-3">
+                            <input type="checkbox" class="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500"
+                                prop:checked=move || checked.get()
+                                on:change=move |_| checked.update(|v| *v = !*v)
+                            />
+                            <span class="text-sm text-gray-700">{name}</span>
+                        </label>
+                    }
+                }).collect_view()}
             </div>
 
             <ApplyNavButtons prev_href="/caregiver/apply/schedule" next_href="/caregiver/apply/references" />
         </div>
-    }
-}
-
-#[component]
-fn ServiceTypeOption(
-    #[prop(into)] title: String,
-    #[prop(into)] desc: String,
-) -> impl IntoView {
-    let selected = RwSignal::new(false);
-
-    view! {
-        <button
-            type="button"
-            class="w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors"
-            class=("border-teal-500", move || selected.get())
-            class=("bg-teal-50", move || selected.get())
-            class=("border-gray-200", move || !selected.get())
-            class=("hover:bg-gray-50", move || !selected.get())
-            on:click=move |_| selected.update(|v| *v = !*v)
-        >
-            <div
-                class="w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 mt-0.5"
-                class=("border-teal-600", move || selected.get())
-                class=("bg-teal-600", move || selected.get())
-                class=("border-gray-300", move || !selected.get())
-            >
-                <Show when=move || selected.get()>
-                    <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                </Show>
-            </div>
-            <div>
-                <p class="text-sm font-medium text-gray-900">{title}</p>
-                <p class="text-xs text-gray-500">{desc}</p>
-            </div>
-        </button>
     }
 }
 
@@ -437,20 +551,44 @@ pub fn ApplyReferencesPage() -> impl IntoView {
 
 #[component]
 fn ReferenceForm(index: u32) -> impl IntoView {
+    let name_key = format!("ref{index}_name");
+    let rel_key = format!("ref{index}_rel");
+    let phone_key = format!("ref{index}_phone");
+
+    let name = RwSignal::new(load_field(&name_key));
+    let rel = RwSignal::new(load_field(&rel_key));
+    let phone = RwSignal::new(load_field(&phone_key));
+
+    let nk = name_key.clone();
+    let rk = rel_key.clone();
+    let pk = phone_key.clone();
+    Effect::new(move || { save_field(&nk, &name.get()); });
+    Effect::new(move || { save_field(&rk, &rel.get()); });
+    Effect::new(move || { save_field(&pk, &phone.get()); });
+
     view! {
         <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
             <h3 class="font-semibold text-gray-900">"추천인 "{index.to_string()}</h3>
             <div class="space-y-1">
                 <label class="text-sm font-medium text-gray-700">"이름"</label>
-                <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="추천인 이름" />
+                <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="추천인 이름"
+                    prop:value=move || name.get()
+                    on:input=move |ev| name.set(event_target_value(&ev))
+                />
             </div>
             <div class="space-y-1">
                 <label class="text-sm font-medium text-gray-700">"관계"</label>
-                <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="예: 이전 기관 관리자" />
+                <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="예: 이전 기관 관리자"
+                    prop:value=move || rel.get()
+                    on:input=move |ev| rel.set(event_target_value(&ev))
+                />
             </div>
             <div class="space-y-1">
                 <label class="text-sm font-medium text-gray-700">"연락처"</label>
-                <input type="tel" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="010-0000-0000" />
+                <input type="tel" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="010-0000-0000"
+                    prop:value=move || phone.get()
+                    on:input=move |ev| phone.set(event_target_value(&ev))
+                />
             </div>
         </div>
     }
@@ -466,35 +604,92 @@ pub fn ApplyReviewPage() -> impl IntoView {
     let submitting = RwSignal::new(false);
     let error_msg = RwSignal::new(None::<String>);
 
+    // Load all form data from localStorage
+    let name = load_field("name");
+    let phone = load_field("phone");
+    let experience_raw = load_field("experience");
+    let regions = load_field("regions");
+    let schedule_days = load_field("schedule_days");
+    let schedule_start = load_field("schedule_start");
+    let schedule_end = load_field("schedule_end");
+    let overnight = load_field("overnight");
+    let weekend = load_field("weekend");
+    let services = load_field("services");
+    let specializations = load_field("specializations");
+
+    let experience_label = match experience_raw.as_str() {
+        "0" => "신입".to_string(),
+        "1" => "1년 미만".to_string(),
+        "3" => "1~3년".to_string(),
+        "5" => "3~5년".to_string(),
+        "10" => "5년 이상".to_string(),
+        _ => "미입력".to_string(),
+    };
+
+    let or_empty = |s: &str| if s.is_empty() { "미입력".to_string() } else { s.to_string() };
+
+    let name_display = or_empty(&name);
+    let phone_display = or_empty(&phone);
+    let regions_display = or_empty(&regions);
+    let schedule_display = if schedule_days.is_empty() {
+        "미입력".to_string()
+    } else {
+        let time_range = if !schedule_start.is_empty() && !schedule_end.is_empty() {
+            format!(" ({} ~ {})", schedule_start, schedule_end)
+        } else {
+            String::new()
+        };
+        format!("{}{}", schedule_days, time_range)
+    };
+    let services_display = or_empty(&services);
+    let specs_display = or_empty(&specializations);
+
+    let mut schedule_extras = Vec::new();
+    if overnight == "true" { schedule_extras.push("야간 근무 가능"); }
+    if weekend == "true" { schedule_extras.push("주말 근무 가능"); }
+    let extras_display = if schedule_extras.is_empty() {
+        String::new()
+    } else {
+        schedule_extras.join(", ")
+    };
+
+    let has_dementia = specializations.contains("치매");
+    let has_overnight = overnight == "true";
+    let exp_years: Option<i32> = experience_raw.parse().ok();
+
     view! {
         <div class="max-w-lg mx-auto px-4 py-6 space-y-5">
             <ApplyStepHeader step=7 total=7 title="검토 및 제출" />
 
             <p class="text-sm text-gray-600">"입력하신 정보를 확인해주세요."</p>
 
-            // Review sections
+            // Review sections — now showing real form data
             <ReviewSection title="본인 정보" href="/caregiver/apply/identity">
-                <ReviewItem label="이름" value="홍길동" />
-                <ReviewItem label="휴대전화" value="010-5555-1234" />
+                <ReviewItem label="이름" value=name_display.clone() />
+                <ReviewItem label="휴대전화" value=phone_display />
             </ReviewSection>
 
             <ReviewSection title="자격 정보" href="/caregiver/apply/credentials">
                 <ReviewItem label="자격증" value="요양보호사 자격증" />
-                <ReviewItem label="경력" value="5년" />
+                <ReviewItem label="경력" value=experience_label />
             </ReviewSection>
 
             <ReviewSection title="서비스 지역" href="/caregiver/apply/service-region">
-                <ReviewItem label="지역" value="서울시 강남구, 서초구" />
+                <ReviewItem label="지역" value=regions_display />
             </ReviewSection>
 
             <ReviewSection title="근무 일정" href="/caregiver/apply/schedule">
-                <ReviewItem label="가능 요일" value="월~금" />
-                <ReviewItem label="시간" value="09:00 - 18:00" />
+                <ReviewItem label="근무 일정" value=schedule_display />
+                {if !extras_display.is_empty() {
+                    Some(view! { <ReviewItem label="추가 설정" value=extras_display /> })
+                } else {
+                    None
+                }}
             </ReviewSection>
 
             <ReviewSection title="서비스 유형" href="/caregiver/apply/services">
-                <ReviewItem label="서비스" value="방문요양, 방문목욕" />
-                <ReviewItem label="전문 분야" value="치매 케어" />
+                <ReviewItem label="서비스" value=services_display />
+                <ReviewItem label="전문 분야" value=specs_display />
             </ReviewSection>
 
             // Agreement
@@ -521,25 +716,53 @@ pub fn ApplyReviewPage() -> impl IntoView {
                     class="flex-1 py-3 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 disabled:opacity-50"
                     disabled=move || !agreed.get() || submitting.get()
                     on:click=move |_| {
+                        let name_val = name.clone();
                         leptos::task::spawn_local(async move {
                             submitting.set(true);
                             error_msg.set(None);
+
+                            // Build body from localStorage data
                             let body = serde_json::json!({
-                                "status": "pending",
                                 "languages_spoken": "ko",
-                                "has_dementia_experience": false,
-                                "has_overnight_availability": false,
+                                "experience_years": exp_years,
+                                "has_dementia_experience": has_dementia,
+                                "has_overnight_availability": has_overnight,
                                 "smoking_status": false,
-                                "pet_friendly": false,
+                                "pet_friendly": true,
+                                "bio": format!("{} 요양보호사 지원", name_val),
                             });
-                            match crate::api::post::<CaregiverApplication, _>("/api/caregiver-applications", &body).await {
-                                Ok(resp) if resp.success => {
-                                    if let Some(window) = leptos::web_sys::window() {
-                                        let _ = window.location().set_href("/caregiver/apply/status");
-                                    }
+
+                            // Step 1: Create DRAFT application
+                            let created = match crate::api::post::<CaregiverApplication, _>(
+                                "/api/caregiver-applications", &body,
+                            ).await {
+                                Ok(resp) if resp.success => resp.data,
+                                Ok(resp) => {
+                                    error_msg.set(resp.error);
+                                    submitting.set(false);
+                                    return;
                                 }
-                                Ok(resp) => error_msg.set(resp.error),
-                                Err(e) => error_msg.set(Some(e)),
+                                Err(e) => {
+                                    error_msg.set(Some(e));
+                                    submitting.set(false);
+                                    return;
+                                }
+                            };
+
+                            // Step 2: Submit DRAFT → SUBMITTED
+                            if let Some(app) = created {
+                                let submit_url = format!("/api/caregiver-applications/{}/submit", app.id);
+                                match crate::api::post_no_body(&submit_url).await {
+                                    Ok(()) => {
+                                        clear_form();
+                                        if let Some(window) = leptos::web_sys::window() {
+                                            let _ = window.location().set_href("/caregiver/apply/status");
+                                        }
+                                    }
+                                    Err(e) => error_msg.set(Some(e)),
+                                }
+                            } else {
+                                error_msg.set(Some("지원서 생성에 실패했습니다".to_string()));
                             }
                             submitting.set(false);
                         });
@@ -670,7 +893,7 @@ pub fn ApplyStatusPage() -> impl IntoView {
 
             // Contact
             <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                <p class="text-sm text-blue-800">"문의사항은 고객센터(1588-0000)로 연락해주세요."</p>
+                <p class="text-sm text-blue-800">"문의사항은 고객센터(1588-9191)로 연락해주세요."</p>
             </div>
         </div>
     }

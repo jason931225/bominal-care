@@ -106,11 +106,18 @@ pub fn HelpBookPage() -> impl IntoView {
 }
 
 /// Displays emergency contact numbers for urgent situations.
+/// Real emergency numbers (119, 1577-1000) are kept. Caregiver and institution
+/// phone numbers are fetched from the API; if unavailable, shows a fallback message.
 #[component]
 pub fn HelpEmergencyPage() -> impl IntoView {
     let triggering = RwSignal::new(false);
     let triggered = RwSignal::new(false);
     let error_msg = RwSignal::new(None::<String>);
+
+    // Fetch profile to get any linked caregiver / institution contacts
+    let contacts = LocalResource::new(|| {
+        crate::api::get::<serde_json::Value>("/api/profile/me")
+    });
 
     view! {
         <div class="p-6 space-y-8 max-w-lg">
@@ -126,11 +133,62 @@ pub fn HelpEmergencyPage() -> impl IntoView {
                 </div>
                 <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
                     <p class="font-medium text-txt-primary">"담당 요양보호사"</p>
-                    <a href="tel:010-1234-5678" class="text-sm text-[var(--portal-accent)] hover:underline mt-1 block">"010-1234-5678"</a>
+                    <Suspense fallback=move || view! { <p class="text-sm text-txt-tertiary mt-1">"불러오는 중..."</p> }>
+                        {move || Suspend::new(async move {
+                            match contacts.await {
+                                Ok(resp) if resp.success => {
+                                    let data = resp.data.unwrap_or(serde_json::Value::Null);
+                                    let phone = data.get("caregiver_phone")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                    match phone {
+                                        Some(p) => {
+                                            let tel = format!("tel:{}", p);
+                                            view! {
+                                                <a href=tel class="text-sm text-[var(--portal-accent)] hover:underline mt-1 block">{p}</a>
+                                            }.into_any()
+                                        }
+                                        None => view! {
+                                            <p class="text-sm text-txt-tertiary mt-1">"등록된 번호 없음"</p>
+                                        }.into_any(),
+                                    }
+                                }
+                                _ => view! {
+                                    <p class="text-sm text-txt-tertiary mt-1">"등록된 번호 없음"</p>
+                                }.into_any(),
+                            }
+                        })}
+                    </Suspense>
                 </div>
                 <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
                     <p class="font-medium text-txt-primary">"담당 기관"</p>
-                    <a href="tel:02-1234-5678" class="text-sm text-[var(--portal-accent)] hover:underline mt-1 block">"02-1234-5678"</a>
+                    <Suspense fallback=move || view! { <p class="text-sm text-txt-tertiary mt-1">"불러오는 중..."</p> }>
+                        {move || Suspend::new(async move {
+                            match contacts.await {
+                                Ok(resp) if resp.success => {
+                                    let data = resp.data.unwrap_or(serde_json::Value::Null);
+                                    let phone = data.get("institution_phone")
+                                        .or_else(|| data.get("provider_phone"))
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                    match phone {
+                                        Some(p) => {
+                                            let tel = format!("tel:{}", p);
+                                            view! {
+                                                <a href=tel class="text-sm text-[var(--portal-accent)] hover:underline mt-1 block">{p}</a>
+                                            }.into_any()
+                                        }
+                                        None => view! {
+                                            <p class="text-sm text-txt-tertiary mt-1">"등록된 번호 없음"</p>
+                                        }.into_any(),
+                                    }
+                                }
+                                _ => view! {
+                                    <p class="text-sm text-txt-tertiary mt-1">"등록된 번호 없음"</p>
+                                }.into_any(),
+                            }
+                        })}
+                    </Suspense>
                 </div>
                 <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
                     <p class="font-medium text-txt-primary">"국민건강보험공단"</p>
@@ -182,6 +240,9 @@ pub fn HelpEmergencyPage() -> impl IntoView {
 pub fn HelpReportPage() -> impl IntoView {
     let (category, set_category) = signal(String::new());
     let (description, set_description) = signal(String::new());
+    let submitting = RwSignal::new(false);
+    let error_msg = RwSignal::new(None::<String>);
+    let success_msg = RwSignal::new(None::<String>);
 
     view! {
         <div class="p-6 space-y-8 max-w-lg">
@@ -214,8 +275,43 @@ pub fn HelpReportPage() -> impl IntoView {
                         on:input=move |ev| set_description.set(event_target_value(&ev))
                     ></textarea>
                 </div>
-                <button class="w-full bg-danger text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:opacity-90 active:scale-[0.98] transition-all">
-                    "신고 제출"
+                {move || error_msg.get().map(|msg| view! {
+                    <p class="text-sm text-danger">{msg}</p>
+                })}
+                {move || success_msg.get().map(|msg| view! {
+                    <div class="bg-success-light rounded-xl p-3">
+                        <p class="text-sm font-medium text-success">{msg}</p>
+                    </div>
+                })}
+                <button
+                    class="w-full bg-danger text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50"
+                    prop:disabled=move || submitting.get()
+                    on:click=move |_| {
+                        let cat = category.get();
+                        let desc = description.get();
+                        leptos::task::spawn_local(async move {
+                            submitting.set(true);
+                            error_msg.set(None);
+                            success_msg.set(None);
+                            let body = serde_json::json!({
+                                "type": cat,
+                                "description": desc,
+                                "severity": "moderate",
+                            });
+                            match crate::api::post::<serde_json::Value, _>("/api/incidents", &body).await {
+                                Ok(resp) if resp.success => {
+                                    success_msg.set(Some("신고가 접수되었습니다".to_string()));
+                                    set_category.set(String::new());
+                                    set_description.set(String::new());
+                                }
+                                Ok(resp) => error_msg.set(resp.error),
+                                Err(e) => error_msg.set(Some(e)),
+                            }
+                            submitting.set(false);
+                        });
+                    }
+                >
+                    {move || if submitting.get() { "제출 중..." } else { "신고 제출" }}
                 </button>
             </div>
         </div>

@@ -132,7 +132,7 @@ INSERT INTO senior_profiles
 VALUES
   ('00000000-0000-0000-0000-000000000201',
    '00000000-0000-0000-0000-000000000101',
-   3, TRUE, 'LTCI-2024-GN-004782',
+   'level_3'::care_level_enum, TRUE, 'LTCI-2024-GN-004782',
    '고혈압, 제2형 당뇨병',
    'walker_assisted',
    'mild_impairment',

@@ -136,8 +136,39 @@ pub fn MatchingResultsPage() -> impl IntoView {
 }
 
 /// Shows a caregiver profile from a match recommendation with rating and score.
+/// Fetches the recommendation list from the API and finds the matching record by id.
 #[component]
 pub fn MatchingDetailPage() -> impl IntoView {
+    let loading = RwSignal::new(false);
+    let error_msg = RwSignal::new(None::<String>);
+    let success_msg = RwSignal::new(None::<String>);
+
+    // Extract the recommendation id from the URL path (last segment)
+    let id = {
+        let path = leptos::web_sys::window()
+            .and_then(|w| w.location().pathname().ok())
+            .unwrap_or_default();
+        path.rsplit('/').next().unwrap_or("").to_string()
+    };
+    let id_for_fetch = id.clone();
+    let id_for_click = id.clone();
+
+    let data = LocalResource::new(move || {
+        let target_id = id_for_fetch.clone();
+        async move {
+            let resp = crate::api::get::<Vec<bominal_types::MatchRecommendation>>(
+                "/api/match-requests",
+            ).await;
+            match resp {
+                Ok(api_resp) if api_resp.success => {
+                    let items = api_resp.data.unwrap_or_default();
+                    items.into_iter().find(|r| r.id.to_string() == target_id)
+                }
+                _ => None,
+            }
+        }
+    });
+
     view! {
         <div class="p-6 space-y-8 max-w-lg">
             <div>
@@ -145,28 +176,101 @@ pub fn MatchingDetailPage() -> impl IntoView {
                 <p class="text-sm text-txt-secondary mt-1">"매칭된 요양보호사의 상세 정보입니다."</p>
             </div>
 
+            <Suspense fallback=move || view! { <div class="animate-pulse bg-gray-200 rounded-xl h-40" /> }>
+                {move || Suspend::new(async move {
+                    match data.await {
+                        Some(rec) => {
+                            let score = format!("{:.0}", rec.score);
+                            let rank = format!("추천 #{}", rec.rank);
+                            // Extract extra info from score_breakdown if available
+                            let breakdown = rec.score_breakdown.unwrap_or(serde_json::Value::Null);
+                            let rating = breakdown.get("rating")
+                                .and_then(|v: &serde_json::Value| v.as_f64())
+                                .map(|r| format!("{:.1}", r))
+                                .unwrap_or_else(|| "-".to_string());
+                            let experience = breakdown.get("experience_years")
+                                .and_then(|v: &serde_json::Value| v.as_i64())
+                                .map(|y| format!("경력 {}년", y))
+                                .unwrap_or_else(|| "경력 정보 없음".to_string());
+                            let specialty = breakdown.get("specialty")
+                                .and_then(|v: &serde_json::Value| v.as_str())
+                                .unwrap_or("전문 분야 정보 없음")
+                                .to_string();
+                            view! {
+                                <div class="bg-surface-card rounded-2xl p-5 shadow-sm space-y-4">
+                                    <div class="flex items-center gap-4">
+                                        <div class="w-14 h-14 bg-[var(--portal-accent-light)] rounded-full flex items-center justify-center">
+                                            <span class="text-xl font-bold text-[var(--portal-accent)]">{rank.clone()}</span>
+                                        </div>
+                                        <div>
+                                            <p class="font-semibold text-txt-primary">{rank}</p>
+                                            <p class="text-sm text-txt-tertiary">{format!("{} · {}", experience, specialty)}</p>
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div class="bg-surface-page rounded-xl p-3">
+                                            <p class="text-xs text-txt-tertiary">"매칭 점수"</p>
+                                            <p class="text-lg font-bold text-[var(--portal-accent)]">
+                                                {score.clone()}<span class="text-xs text-txt-disabled">"/100"</span>
+                                            </p>
+                                        </div>
+                                        <div class="bg-surface-page rounded-xl p-3">
+                                            <p class="text-xs text-txt-tertiary">"평점"</p>
+                                            <p class="text-lg font-bold text-yellow-500">
+                                                {rating}<span class="text-xs text-txt-disabled">"/5"</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            }.into_any()
+                        }
+                        _ => view! {
+                            <div class="bg-surface-card rounded-2xl p-5 shadow-sm">
+                                <p class="text-sm text-txt-tertiary">"추천 정보를 불러올 수 없습니다."</p>
+                            </div>
+                        }.into_any(),
+                    }
+                })}
+            </Suspense>
+
             <div class="bg-surface-card rounded-2xl p-5 shadow-sm space-y-4">
-                <div class="flex items-center gap-4">
-                    <div class="w-14 h-14 bg-[var(--portal-accent-light)] rounded-full flex items-center justify-center">
-                        <span class="text-xl font-bold text-[var(--portal-accent)]">"김"</span>
+                {move || error_msg.get().map(|msg| view! {
+                    <p class="text-sm text-danger">{msg}</p>
+                })}
+                {move || success_msg.get().map(|msg| view! {
+                    <div class="bg-success-light rounded-xl p-3">
+                        <p class="text-sm font-medium text-success">{msg}</p>
                     </div>
-                    <div>
-                        <p class="font-semibold text-txt-primary">"김요양"</p>
-                        <p class="text-sm text-txt-tertiary">"경력 8년 · 치매 전문"</p>
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-surface-page rounded-xl p-3">
-                        <p class="text-xs text-txt-tertiary">"매칭 점수"</p>
-                        <p class="text-lg font-bold text-[var(--portal-accent)]">"92"<span class="text-xs text-txt-disabled">"/100"</span></p>
-                    </div>
-                    <div class="bg-surface-page rounded-xl p-3">
-                        <p class="text-xs text-txt-tertiary">"평점"</p>
-                        <p class="text-lg font-bold text-yellow-500">"4.8"<span class="text-xs text-txt-disabled">"/5"</span></p>
-                    </div>
-                </div>
-                <button class="w-full bg-[var(--portal-accent)] text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:opacity-90 active:scale-[0.98] transition-all">
-                    "매칭 요청"
+                })}
+
+                <button
+                    class="w-full bg-[var(--portal-accent)] text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50"
+                    prop:disabled=move || loading.get()
+                    on:click={
+                        let rec_id = id_for_click.clone();
+                        move |_| {
+                            let rec_id = rec_id.clone();
+                            leptos::task::spawn_local(async move {
+                                loading.set(true);
+                                error_msg.set(None);
+                                success_msg.set(None);
+                                let body = serde_json::json!({
+                                    "recommendation_id": rec_id,
+                                });
+                                let url = format!("/api/match-requests/{}/select", rec_id);
+                                match crate::api::post::<serde_json::Value, _>(&url, &body).await {
+                                    Ok(resp) if resp.success => {
+                                        success_msg.set(Some("매칭 요청이 완료되었습니다".to_string()));
+                                    }
+                                    Ok(resp) => error_msg.set(resp.error),
+                                    Err(e) => error_msg.set(Some(e)),
+                                }
+                                loading.set(false);
+                            });
+                        }
+                    }
+                >
+                    {move || if loading.get() { "처리 중..." } else { "매칭 요청" }}
                 </button>
             </div>
         </div>

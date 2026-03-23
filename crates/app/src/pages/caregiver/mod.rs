@@ -1,5 +1,6 @@
+use std::collections::HashSet;
+
 use leptos::prelude::*;
-use uuid::Uuid;
 use bominal_types::Visit;
 
 pub mod schedule;
@@ -14,18 +15,34 @@ pub use apply::*;
 pub use tasks::*;
 pub use profile::*;
 
-/// Deterministic demo IDs for caregiver portal detail pages.
-fn demo_client_id() -> String {
-    Uuid::new_v5(&Uuid::NAMESPACE_OID, b"client-kim-boksun").to_string()
-}
-
-fn demo_visit_id() -> String {
-    Uuid::new_v5(&Uuid::NAMESPACE_OID, b"visit-kim-boksun-pm").to_string()
-}
-
 // =============================================================================
 // 1. DashboardPage — today's stats, next visit, alerts, weekly summary
 // =============================================================================
+
+/// Compute total scheduled work hours from a list of visits.
+fn compute_work_hours(visits: &[Visit]) -> f64 {
+    visits.iter().map(|v| {
+        let duration = v.scheduled_end - v.scheduled_start;
+        duration.num_minutes() as f64 / 60.0
+    }).sum()
+}
+
+/// Count distinct clients (by care_plan_id as a proxy).
+fn count_unique_clients(visits: &[Visit]) -> usize {
+    let set: HashSet<_> = visits.iter().map(|v| v.care_plan_id).collect();
+    set.len()
+}
+
+/// Format hours as a display string: "8.5" or "0".
+fn format_hours(h: f64) -> String {
+    if h == 0.0 {
+        "0".to_string()
+    } else if (h - h.round()).abs() < 0.01 {
+        format!("{}", h as u32)
+    } else {
+        format!("{:.1}", h)
+    }
+}
 
 #[component]
 pub fn DashboardPage() -> impl IntoView {
@@ -57,6 +74,9 @@ pub fn DashboardPage() -> impl IntoView {
                         Ok(resp) if resp.success => {
                             let items = resp.data.unwrap_or_default();
                             let visit_count = items.len();
+                            let work_hours = compute_work_hours(&items);
+                            let work_hours_str = format_hours(work_hours);
+                            let unique_clients = count_unique_clients(&items);
                             let next_visit = items.first().cloned();
 
                             view! {
@@ -71,7 +91,7 @@ pub fn DashboardPage() -> impl IntoView {
                                         </div>
                                         <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
                                             <p class="text-sm text-gray-500">"근무 시간"</p>
-                                            <p class="text-2xl font-bold text-teal-600 mt-1">"—"<span class="text-sm font-normal text-gray-500">" 시간"</span></p>
+                                            <p class="text-2xl font-bold text-teal-600 mt-1">{work_hours_str.clone()}<span class="text-sm font-normal text-gray-500">" 시간"</span></p>
                                         </div>
                                     </div>
 
@@ -134,6 +154,25 @@ pub fn DashboardPage() -> impl IntoView {
                                     } else {
                                         view! { <div></div> }.into_any()
                                     }}
+
+                                    // Weekly summary — computed from visit data
+                                    <div class="mt-6 bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                                        <h2 class="font-semibold text-gray-900 mb-3">"이번 주 요약"</h2>
+                                        <div class="grid grid-cols-3 gap-3 text-center">
+                                            <div>
+                                                <p class="text-lg font-bold text-gray-900">{visit_count.to_string()}</p>
+                                                <p class="text-xs text-gray-500">"총 방문"</p>
+                                            </div>
+                                            <div>
+                                                <p class="text-lg font-bold text-teal-600">{work_hours_str}</p>
+                                                <p class="text-xs text-gray-500">"근무 시간"</p>
+                                            </div>
+                                            <div>
+                                                <p class="text-lg font-bold text-blue-600">{unique_clients.to_string()}</p>
+                                                <p class="text-xs text-gray-500">"고객 수"</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             }.into_any()
                         }
@@ -142,25 +181,6 @@ pub fn DashboardPage() -> impl IntoView {
                     }
                 })}
             </Suspense>
-
-            // Weekly summary (static for now - will be wired in a later phase)
-            <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <h2 class="font-semibold text-gray-900 mb-3">"이번 주 요약"</h2>
-                <div class="grid grid-cols-3 gap-3 text-center">
-                    <div>
-                        <p class="text-lg font-bold text-gray-900">"—"</p>
-                        <p class="text-xs text-gray-500">"총 방문"</p>
-                    </div>
-                    <div>
-                        <p class="text-lg font-bold text-teal-600">"—"</p>
-                        <p class="text-xs text-gray-500">"근무 시간"</p>
-                    </div>
-                    <div>
-                        <p class="text-lg font-bold text-blue-600">"—"</p>
-                        <p class="text-xs text-gray-500">"고객 수"</p>
-                    </div>
-                </div>
-            </div>
         </div>
     }
 }
