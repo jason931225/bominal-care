@@ -47,7 +47,7 @@ steps:
       - '1'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'RUST_LOG=info,APP_ENV=production,WEBAUTHN_RP_ID=care.bominal.com,WEBAUTHN_RP_ORIGIN=https://care.bominal.com,CORS_ORIGINS=https://care.bominal.com'
+      - 'RUST_LOG=info,APP_ENV=production,WEBAUTHN_RP_ID=care.bominal.com,WEBAUTHN_RP_ORIGIN=https://care.bominal.com,CORS_ORIGINS=https://care.bominal.com,https://bominal-server-833094198766.us-central1.run.app'
       - '--set-secrets'
       - 'DATABASE_URL=bominal-db-url:latest'
       # --- Direct VPC egress (free, no connector needed) ---
@@ -58,17 +58,8 @@ steps:
       - '--vpc-egress'
       - 'private-ranges-only'
 
-  # Deploy Firebase Hosting (CDN for static assets, rewrites to Cloud Run)
-  - name: 'gcr.io/cloud-builders/npm'
-    args: ['install', '-g', 'firebase-tools']
-  - name: 'gcr.io/cloud-builders/npm'
-    entrypoint: firebase
-    args:
-      - 'deploy'
-      - '--only'
-      - 'hosting'
-      - '--project'
-      - '${PROJECT_ID}'
+  # Firebase Hosting removed — using Cloudflare CDN instead
+  # Cloud Run serves both API and static frontend assets
 
 substitutions:
   _REGION: us-central1
