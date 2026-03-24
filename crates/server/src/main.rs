@@ -119,9 +119,11 @@ async fn main() {
         .route("/health", axum::routing::get(health))
         .route("/readiness", axum::routing::get(readiness));
 
-    // Serve static files from dist/ with SPA fallback
-    let serve_dir = ServeDir::new("dist").fallback(
-        tower_http::services::ServeFile::new("dist/index.html"),
+    // Serve static files with SPA fallback (DIST_DIR env or ./dist)
+    let dist_dir = std::env::var("DIST_DIR").unwrap_or_else(|_| "dist".to_string());
+    let index_path = format!("{}/index.html", &dist_dir);
+    let serve_dir = ServeDir::new(&dist_dir).fallback(
+        tower_http::services::ServeFile::new(index_path),
     );
 
     // Global rate limit: 100 requests per second.
