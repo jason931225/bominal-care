@@ -6,60 +6,29 @@
 # =============================================================================
 
 # --- Stage 1: WASM Client Build ---
-FROM rust:1.85-bookworm AS wasm-builder
+FROM rust:1.88-bookworm AS wasm-builder
 
+RUN apt-get update && apt-get install -y --no-install-recommends brotli && rm -rf /var/lib/apt/lists/*
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install trunk --locked
 
 WORKDIR /app
 
-# Copy workspace manifests for dependency caching
 COPY Cargo.toml Cargo.lock ./
-COPY crates/types/Cargo.toml crates/types/Cargo.toml
-COPY crates/db/Cargo.toml crates/db/Cargo.toml
-COPY crates/server/Cargo.toml crates/server/Cargo.toml
-COPY crates/app/Cargo.toml crates/app/Cargo.toml
-
-# Create dummy src files to cache dependency compilation
-RUN mkdir -p crates/types/src crates/db/src crates/server/src crates/app/src && \
-    echo "pub fn dummy() {}" > crates/types/src/lib.rs && \
-    echo "pub fn dummy() {}" > crates/db/src/lib.rs && \
-    echo "pub fn dummy() {}" > crates/server/src/lib.rs && \
-    echo "pub fn dummy() {}" > crates/app/src/lib.rs && \
-    cargo build --target wasm32-unknown-unknown --release 2>/dev/null || true
-
-# Copy actual source and build assets
 COPY crates/ crates/
 COPY style/ style/
 COPY index.html Trunk.toml ./
 
-# Build WASM client with Trunk (produces dist/)
 RUN trunk build --release
 
 # --- Stage 2: Server Build ---
-FROM rust:1.85-bookworm AS server-builder
+FROM rust:1.88-bookworm AS server-builder
 
 WORKDIR /app
 
-# Copy workspace manifests for dependency caching
 COPY Cargo.toml Cargo.lock ./
-COPY crates/types/Cargo.toml crates/types/Cargo.toml
-COPY crates/db/Cargo.toml crates/db/Cargo.toml
-COPY crates/server/Cargo.toml crates/server/Cargo.toml
-COPY crates/app/Cargo.toml crates/app/Cargo.toml
-
-# Create dummy src files to cache dependency compilation
-RUN mkdir -p crates/types/src crates/db/src crates/server/src crates/app/src && \
-    echo "pub fn dummy() {}" > crates/types/src/lib.rs && \
-    echo "pub fn dummy() {}" > crates/db/src/lib.rs && \
-    echo "fn main() {}" > crates/server/src/main.rs && \
-    echo "pub fn dummy() {}" > crates/app/src/lib.rs && \
-    cargo build --release -p bominal-server 2>/dev/null || true
-
-# Copy actual source
 COPY crates/ crates/
 
-# Build server binary
 RUN cargo build --release -p bominal-server
 
 # --- Stage 3: Runtime ---

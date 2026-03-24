@@ -1,6 +1,7 @@
 # =============================================================================
 # Google Cloud Build — Build → Push to Artifact Registry → Deploy Cloud Run + Firebase Hosting
 # Region: us-central1 (Iowa) — colocated with Compute Engine e2-micro (Postgres)
+# Optimized for GCP Always Free tier
 # =============================================================================
 
 steps:
@@ -11,8 +12,6 @@ steps:
       - '-f'
       - 'docker/Dockerfile.rust'
       - '-t'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/bominal-server:${SHORT_SHA}'
-      - '-t'
       - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/bominal-server:latest'
       - '.'
 
@@ -20,10 +19,9 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - '--all-tags'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/bominal-server'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/bominal-server:latest'
 
-  # Deploy Cloud Run backend (serves SSR + API)
+  # Deploy Cloud Run backend
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -31,19 +29,20 @@ steps:
       - 'deploy'
       - 'bominal-server'
       - '--image'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/bominal-server:${SHORT_SHA}'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/bominal-server:latest'
       - '--region'
       - '${_REGION}'
       - '--platform'
       - 'managed'
       - '--port'
       - '8080'
+      # --- Free tier: scale to zero, minimal resources ---
       - '--min-instances'
-      - '1'
+      - '0'
       - '--max-instances'
-      - '10'
+      - '2'
       - '--memory'
-      - '512Mi'
+      - '256Mi'
       - '--cpu'
       - '1'
       - '--allow-unauthenticated'
@@ -51,12 +50,15 @@ steps:
       - 'RUST_LOG=info,APP_ENV=production,WEBAUTHN_RP_ID=care.bominal.com,WEBAUTHN_RP_ORIGIN=https://care.bominal.com,CORS_ORIGINS=https://care.bominal.com'
       - '--set-secrets'
       - 'DATABASE_URL=bominal-db-url:latest'
-      - '--vpc-connector'
-      - 'projects/bominal/locations/us-central1/connectors/bominal-vpc'
+      # --- Direct VPC egress (free, no connector needed) ---
+      - '--network'
+      - 'default'
+      - '--subnet'
+      - 'default'
       - '--vpc-egress'
       - 'private-ranges-only'
 
-  # Deploy Firebase Hosting (CDN for static assets, rewrites to Cloud Run for SSR)
+  # Deploy Firebase Hosting (CDN for static assets, rewrites to Cloud Run)
   - name: 'gcr.io/cloud-builders/npm'
     args: ['install', '-g', 'firebase-tools']
   - name: 'gcr.io/cloud-builders/npm'
@@ -73,7 +75,8 @@ substitutions:
   _REPO: bominal
 
 options:
-  logging: CLOUD_LOGGING_ONLY
-  machineType: 'E2_HIGHCPU_8'
+  logging: GCS_ONLY
+  # Default machine (free 120 min/day) — slower but no cost
+  # machineType: 'E2_HIGHCPU_8'
 
-timeout: '1800s'
+timeout: '3600s'

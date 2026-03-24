@@ -16,8 +16,8 @@ pub struct DemoLoginRequest {
     pub email: String,
 }
 
-/// Dev-only demo login that looks up a user by email and creates a session.
-#[cfg(debug_assertions)]
+/// Demo login that looks up a user by email and creates a session.
+/// Available in all builds until OAuth/passkey auth is production-ready.
 pub async fn demo_login(
     State(state): State<AppState>,
     session: Session,

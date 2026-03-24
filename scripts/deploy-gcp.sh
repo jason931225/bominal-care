@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Bominal Care — GCP Deployment Script
-# Architecture: Cloud Run (us-central1) + Compute Engine Postgres (us-central1-a)
-# Frontend: Firebase Hosting CDN → /api/ proxied to Cloud Run
+# Bominal Care — GCP Deployment Script (Always Free Tier)
+#
+# Architecture:
+#   Cloud Run (us-central1, scale-to-zero) → Direct VPC egress → Compute Engine Postgres
+#   Firebase Hosting CDN → /api/ proxied to Cloud Run
+#
+# Free tier usage:
+#   - Cloud Run: min-instances=0, 256Mi, scale to zero when idle
+#   - Cloud Build: default machine (120 free min/day)
+#   - Direct VPC egress: free (no VPC connector needed)
+#   - Compute Engine: e2-micro (always free in us-central1)
+#   - Firebase Hosting: 10GB storage, 360MB/day transfer
+#   - Artifact Registry: 0.5GB free
+#   - Secret Manager: 6 versions free
 # =============================================================================
 
 set -euo pipefail
@@ -10,95 +21,48 @@ set -euo pipefail
 PROJECT_ID="bominal"
 REGION="us-central1"
 ZONE="us-central1-a"
-REPO="bominal"
-SERVICE="bominal-server"
-DB_INSTANCE="bominal-deploy"
-DB_INTERNAL_IP="10.128.0.8"
-VPC_CONNECTOR="bominal-vpc"
 
-echo "=== Bominal Care GCP Deployment ==="
-echo "Project: $PROJECT_ID"
-echo "Region:  $REGION"
+echo "=== Bominal Care GCP Deployment (Free Tier) ==="
+echo "Project: $PROJECT_ID | Region: $REGION"
 echo ""
 
-# --- Step 0: Check prerequisites ---
-echo "[0/7] Checking prerequisites..."
-gcloud config set project "$PROJECT_ID"
-command -v docker >/dev/null || { echo "ERROR: docker not found"; exit 1; }
-
-# --- Step 1: Enable required APIs ---
-echo "[1/7] Enabling APIs..."
+# --- Step 1: Enable APIs ---
+echo "[1/4] Enabling APIs..."
 gcloud services enable \
   run.googleapis.com \
   artifactregistry.googleapis.com \
   cloudbuild.googleapis.com \
   firebasehosting.googleapis.com \
-  vpcaccess.googleapis.com \
+  secretmanager.googleapis.com \
   compute.googleapis.com \
   --quiet
 
-# --- Step 2: Create Artifact Registry (if not exists) ---
-echo "[2/7] Setting up Artifact Registry..."
-gcloud artifacts repositories describe "$REPO" \
-  --location="$REGION" --format="value(name)" 2>/dev/null || \
-gcloud artifacts repositories create "$REPO" \
-  --repository-format=docker \
-  --location="$REGION" \
-  --description="Bominal Care container images"
+# --- Step 2: Verify prerequisites ---
+echo "[2/4] Checking prerequisites..."
+gcloud secrets describe bominal-db-url --format="value(name)" >/dev/null 2>&1 || {
+  echo "ERROR: Secret 'bominal-db-url' not found. Create it with:"
+  echo "  echo -n 'postgresql://USER:PASS@10.128.0.8:5432/bominal_care' | gcloud secrets create bominal-db-url --data-file=-"
+  exit 1
+}
+echo "  ✓ bominal-db-url secret exists"
 
-# --- Step 3: Create VPC Connector (Cloud Run → Compute Engine internal network) ---
-echo "[3/7] Setting up VPC connector..."
-gcloud compute networks vpc-access connectors describe "$VPC_CONNECTOR" \
-  --region="$REGION" --format="value(name)" 2>/dev/null || \
-gcloud compute networks vpc-access connectors create "$VPC_CONNECTOR" \
-  --region="$REGION" \
-  --range="10.8.0.0/28" \
-  --min-instances=2 \
-  --max-instances=3
+gcloud compute instances describe bominal-deploy --zone=$ZONE --format="value(status)" 2>/dev/null | grep -q RUNNING || {
+  echo "WARNING: bominal-deploy VM is not running. Starting..."
+  gcloud compute instances start bominal-deploy --zone=$ZONE
+  sleep 10
+}
+echo "  ✓ bominal-deploy VM running"
 
-# --- Step 4: Ensure firewall allows Cloud Run → Postgres ---
-echo "[4/7] Configuring firewall..."
-gcloud compute firewall-rules describe allow-postgres-from-vpc-connector \
-  --format="value(name)" 2>/dev/null || \
-gcloud compute firewall-rules create allow-postgres-from-vpc-connector \
-  --direction=INGRESS \
-  --priority=1000 \
-  --network=default \
-  --action=ALLOW \
-  --rules=tcp:5432 \
-  --source-ranges="10.8.0.0/28" \
-  --target-tags=postgres-server
-
-echo ""
-echo "=== IMPORTANT: Ensure your Compute Engine VM has the 'postgres-server' network tag ==="
-echo "Run: gcloud compute instances add-tags $DB_INSTANCE --zone=$ZONE --tags=postgres-server"
-echo ""
-
-# --- Step 5: Set DATABASE_URL as Cloud Run secret ---
-echo "[5/7] Setting DATABASE_URL..."
-echo ""
-echo "You need to set the DATABASE_URL secret. Run:"
-echo "  echo -n 'postgresql://bominal_care:PASSWORD@${DB_INTERNAL_IP}:5432/bominal_care' | \\"
-echo "    gcloud secrets create bominal-db-url --data-file=- --replication-policy=automatic"
-echo ""
-echo "Then grant Cloud Run access:"
-echo "  gcloud secrets add-iam-policy-binding bominal-db-url \\"
-echo "    --member='serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com' \\"
-echo "    --role='roles/secretmanager.secretAccessor'"
-echo ""
-read -p "Press Enter after setting up the secret (or Ctrl+C to abort)..."
-
-# --- Step 6: Build and deploy ---
-echo "[6/7] Building and deploying..."
+# --- Step 3: Build and deploy ---
+echo "[3/4] Building and deploying (this takes ~30min on free tier machine)..."
 gcloud builds submit --config=cloudbuild.yaml
 
-# --- Step 7: Verify ---
-echo "[7/7] Verifying deployment..."
-URL=$(gcloud run services describe "$SERVICE" --region="$REGION" --format="value(status.url)")
+# --- Step 4: Verify ---
+echo "[4/4] Verifying..."
+URL=$(gcloud run services describe bominal-server --region=$REGION --format="value(status.url)" 2>/dev/null)
 echo ""
 echo "=== Deployment Complete ==="
-echo "Cloud Run URL: $URL"
-echo "Firebase URL:  https://bominal.care (after DNS setup)"
+echo "Cloud Run:  $URL"
+echo "Health:     $URL/health"
 echo ""
-echo "Test: curl $URL/health"
-curl -s "$URL/health" && echo ""
+echo "Next: Set up care.bominal.com DNS in Firebase Hosting console"
